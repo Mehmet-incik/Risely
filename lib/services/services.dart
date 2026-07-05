@@ -1,0 +1,198 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
+import '../models/task.dart';
+
+class NotificationService {
+  static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
+
+  static const List<Map<String, String>> messages = [
+    {'icon': '🦅', 'greeting': 'Selam', 'body': 'Seni tanımlayan, kaç kez düştüğün değil, her seferinde nasıl kalktığındır.'},
+    {'icon': '🌅', 'greeting': 'Günaydın', 'body': 'Sabırlı ol. İyi şeyler gelecek.'},
+    {'icon': '🚀', 'greeting': 'Selam', 'body': 'Küçük adımlar, büyük zaferler getirir. Başla!'},
+  ];
+
+  static Future<void> init() async {
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const settings = InitializationSettings(android: androidSettings);
+    await _notifications.initialize(settings);
+    await _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
+    await _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestExactAlarmsPermission();
+  }
+
+  static Future<void> scheduleTaskReminder(int notificationId, String title, DateTime taskTime, int offsetMinutes) async {
+    final local = tz.local;
+    final tzTaskTime = tz.TZDateTime.from(taskTime, local);
+    final tzScheduledTime = tzTaskTime.subtract(Duration(minutes: offsetMinutes));
+
+    if (tzScheduledTime.isBefore(tz.TZDateTime.now(local))) return;
+
+    String timeStr = '${taskTime.hour.toString().padLeft(2, '0')}:${taskTime.minute.toString().padLeft(2, '0')}';
+    String bodyText = offsetMinutes == 0
+        ? 'Görev zamanı geldi!'
+        : 'Saat $timeStr\'daki görevine ${offsetMinutes == 60 ? '1 saat' : '$offsetMinutes dakika'} kaldı!';
+
+    await _notifications.zonedSchedule(
+      notificationId,
+      '🔔 $title',
+      bodyText,
+      tzScheduledTime,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'task_reminders', 'Görev Hatırlatıcıları',
+          channelDescription: 'Bireysel görevler için zamanlanmış bildirimler',
+          importance: Importance.max, priority: Priority.high,
+          styleInformation: BigTextStyleInformation(''),
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  }
+
+  static Future<void> cancelTaskReminder(int notificationId) async {
+    await _notifications.cancel(notificationId);
+  }
+
+  static Future<void> scheduleMorningMotivation(int hour, int minute) async {
+    for(int i=0; i<60; i++) { await _notifications.cancel(i); }
+
+    final local = tz.local;
+    final now = tz.TZDateTime.now(local);
+    int dayOffset = tz.TZDateTime(local, now.year, now.month, now.day, hour, minute).isBefore(now) ? 1 : 0;
+
+    for (int i = 0; i < 60; i++) {
+      final scheduledDate = tz.TZDateTime(local, now.year, now.month, now.day, hour, minute).add(Duration(days: i + dayOffset));
+      final msg = messages[i % messages.length];
+      await _notifications.zonedSchedule(
+        i,
+        "${msg['icon']} ${msg['greeting']}, ${TaskStore.userName}",
+        msg['body']!,
+        scheduledDate,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'morning_motivation', 'Sabah Motivasyonu',
+            importance: Importance.max, priority: Priority.high,
+            styleInformation: BigTextStyleInformation(''),
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      );
+    }
+  }
+
+  static Future<void> testInstantNotification() async {
+    final msg = messages[0];
+    await _notifications.show(
+      999,
+      "${msg['icon']} Bu bir Test Bildirimidir!",
+      "Eğer bunu görüyorsan, bildirim altyapın kusursuz çalışıyor demektir! 🚀",
+      const NotificationDetails(android: AndroidNotificationDetails('morning_motivation', 'Sabah Motivasyonu', importance: Importance.max, priority: Priority.high)),
+    );
+  }
+
+  static Future<void> cancelAllNotifications() async {
+    await _notifications.cancelAll();
+  }
+}
+
+class TaskStore {
+  static List<Task> allTasks = [];
+  static String userName = 'Kullanıcı';
+  static String userAvatar = '🚀';
+  static String? notificationTime;
+  static DateTime? notificationStartDate;
+
+  static String getTodayLabel() {
+    final now = DateTime.now();
+    final days = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+    final months = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+    return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]}';
+  }
+
+  static int get totalXp => allTasks.where((t) => t.isDone).length * 15;
+
+  static Map<String, dynamic> getUserLevelInfo() {
+    int xp = totalXp;
+    if (xp < 75) return {'level': 1, 'title': 'Acemi Planlayıcı'};
+    if (xp < 150) return {'level': 2, 'title': 'Çaylak'};
+    if (xp < 300) return {'level': 3, 'title': 'Çırak'};
+    if (xp < 450) return {'level': 4, 'title': 'Kalfa'};
+    return {'level': 5, 'title': 'Uzman'};
+  }
+
+  static List<Task> getTasksForDate(DateTime date) {
+    return allTasks.where((t) => t.date.year == date.year && t.date.month == date.month && t.date.day == date.day).toList();
+  }
+
+  static int getScoreForDate(DateTime date) {
+    final tasks = getTasksForDate(date);
+    if (tasks.isEmpty) return 0;
+    return ((tasks.where((t) => t.isDone).length / tasks.length) * 100).round();
+  }
+
+  static Map<String, String> getDailyMotivation() {
+    if (notificationStartDate == null) return NotificationService.messages[DateTime.now().day % NotificationService.messages.length];
+    final now = DateTime.now();
+    final startMidnight = DateTime(notificationStartDate!.year, notificationStartDate!.month, notificationStartDate!.day);
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+    int diffDays = todayMidnight.difference(startMidnight).inDays;
+    if (diffDays < 0) diffDays = 0;
+    return NotificationService.messages[diffDays % NotificationService.messages.length];
+  }
+
+  static Future<void> loadData() async {
+    final prefs = await SharedPreferences.getInstance();
+    userName = prefs.getString('user_name') ?? 'Kullanıcı';
+    userAvatar = prefs.getString('user_avatar') ?? '🚀';
+    notificationTime = prefs.getString('notification_time');
+
+    final startDateStr = prefs.getString('notification_start_date');
+    if (startDateStr != null) notificationStartDate = DateTime.parse(startDateStr);
+
+    final String? tasksJson = prefs.getString('saved_tasks');
+    if (tasksJson != null) {
+      try {
+        final List<dynamic> decoded = jsonDecode(tasksJson);
+        allTasks = decoded.map((item) => Task.fromJson(item)).toList();
+      } catch (e) {
+        allTasks = [];
+      }
+    } else {
+      allTasks = [];
+    }
+  }
+
+  static Future<void> saveTasks() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('saved_tasks', jsonEncode(allTasks.map((t) => t.toJson()).toList()));
+  }
+
+  static Future<void> saveUserName(String name) async {
+    userName = name;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_name', name);
+  }
+
+  static Future<void> saveAvatar(String avatar) async {
+    userAvatar = avatar;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_avatar', avatar);
+  }
+
+  static Future<void> saveNotificationTime(String? time) async {
+    notificationTime = time;
+    final prefs = await SharedPreferences.getInstance();
+    if (time != null) {
+      await prefs.setString('notification_time', time);
+      notificationStartDate = DateTime.now();
+      await prefs.setString('notification_start_date', notificationStartDate!.toIso8601String());
+    } else {
+      await prefs.remove('notification_time');
+      await prefs.remove('notification_start_date');
+      notificationStartDate = null;
+    }
+  }
+}
