@@ -133,6 +133,49 @@ class TaskStore {
     return ((tasks.where((t) => t.isDone).length / tasks.length) * 100).round();
   }
 
+  static Set<DateTime> get _completedDates {
+    return allTasks.where((t) => t.isDone).map((t) => DateTime(t.date.year, t.date.month, t.date.day)).toSet();
+  }
+
+  // Bugün henüz görev bitirilmemişse dünden geriye sayar (seri "risk altında" gösterilir ama kırılmış sayılmaz).
+  static int get currentStreak {
+    final completed = _completedDates;
+    final now = DateTime.now();
+    DateTime cursor = DateTime(now.year, now.month, now.day);
+    if (!completed.contains(cursor)) cursor = cursor.subtract(const Duration(days: 1));
+
+    int streak = 0;
+    while (completed.contains(cursor)) {
+      streak++;
+      cursor = cursor.subtract(const Duration(days: 1));
+    }
+    return streak;
+  }
+
+  static int get longestStreak {
+    final completed = _completedDates.toList()..sort();
+    if (completed.isEmpty) return 0;
+
+    int longest = 1;
+    int running = 1;
+    for (int i = 1; i < completed.length; i++) {
+      final diff = completed[i].difference(completed[i - 1]).inDays;
+      if (diff == 1) {
+        running++;
+      } else if (diff > 1) {
+        running = 1;
+      }
+      if (running > longest) longest = running;
+    }
+    return longest;
+  }
+
+  static bool get isStreakAtRisk {
+    if (currentStreak == 0) return false;
+    final now = DateTime.now();
+    return !_completedDates.contains(DateTime(now.year, now.month, now.day));
+  }
+
   static Map<String, String> getDailyMotivation() {
     if (notificationStartDate == null) return NotificationService.messages[DateTime.now().day % NotificationService.messages.length];
     final now = DateTime.now();

@@ -194,11 +194,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(color: AppColors.work.withOpacity(0.15), borderRadius: BorderRadius.circular(99)),
-                          child: const Text('🔥 Seriye Başla!', style: TextStyle(fontSize: 11, color: AppColors.work, fontWeight: FontWeight.w600)),
-                        ),
+                        _buildStreakBadge(),
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -214,6 +210,30 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStreakBadge() {
+    final streak = TaskStore.currentStreak;
+    final atRisk = TaskStore.isStreakAtRisk;
+
+    String label;
+    Color color;
+    if (streak == 0) {
+      label = '🔥 Seriye Başla!';
+      color = AppColors.work;
+    } else if (atRisk) {
+      label = '⚠️ $streak Günlük Seri - Riskte!';
+      color = Colors.redAccent;
+    } else {
+      label = '🔥 $streak Günlük Seri!';
+      color = AppColors.work;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(99)),
+      child: Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
     );
   }
 
