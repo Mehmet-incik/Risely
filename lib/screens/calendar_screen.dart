@@ -5,7 +5,7 @@ import '../models/task.dart';
 import '../services/services.dart';
 import 'task_form.dart';
 
-enum CalendarViewMode { weekly, monthly, yearly }
+enum CalendarViewMode { weekly, monthly, yearly, heatmap }
 
 class CalendarScreen extends StatefulWidget {
   final VoidCallback onTaskToggled;
@@ -55,9 +55,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
               groupValue: _viewMode,
               padding: const EdgeInsets.all(4),
               children: {
-                CalendarViewMode.weekly: Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10), child: Text('Haftalık', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _viewMode == CalendarViewMode.weekly ? AppColors.xp : AppColors.textMuted))),
-                CalendarViewMode.monthly: Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10), child: Text('Aylık', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _viewMode == CalendarViewMode.monthly ? AppColors.xp : AppColors.textMuted))),
-                CalendarViewMode.yearly: Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10), child: Text('Yıllık', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _viewMode == CalendarViewMode.yearly ? AppColors.xp : AppColors.textMuted))),
+                CalendarViewMode.weekly: Padding(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), child: Text('Haftalık', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _viewMode == CalendarViewMode.weekly ? AppColors.xp : AppColors.textMuted))),
+                CalendarViewMode.monthly: Padding(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), child: Text('Aylık', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _viewMode == CalendarViewMode.monthly ? AppColors.xp : AppColors.textMuted))),
+                CalendarViewMode.yearly: Padding(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), child: Text('Yıllık', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _viewMode == CalendarViewMode.yearly ? AppColors.xp : AppColors.textMuted))),
+                CalendarViewMode.heatmap: Padding(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), child: Text('Yoğunluk', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _viewMode == CalendarViewMode.heatmap ? AppColors.xp : AppColors.textMuted))),
               },
               onValueChanged: (val) {
                 if (val != null) setState(() => _viewMode = val);
@@ -81,6 +82,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       case CalendarViewMode.weekly: return _buildWeeklyView();
       case CalendarViewMode.monthly: return _buildMonthlyView();
       case CalendarViewMode.yearly: return _buildYearlyView();
+      case CalendarViewMode.heatmap: return _buildHeatmapView();
     }
   }
 
@@ -311,6 +313,130 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildHeatmapView() {
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final currentWeekStart = todayOnly.subtract(Duration(days: todayOnly.weekday - 1));
+    final firstWeekStart = currentWeekStart.subtract(const Duration(days: 7 * 51));
+
+    final weeks = List.generate(52, (w) {
+      final weekStart = firstWeekStart.add(Duration(days: w * 7));
+      return List.generate(7, (d) => weekStart.add(Duration(days: d)));
+    });
+
+    return Column(
+      key: const ValueKey('heatmap'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Text('SON 52 HAFTA · BAŞARI YOĞUNLUĞU', style: TextStyle(fontSize: 11, color: AppColors.textMuted, letterSpacing: 1.5)),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeatmapDayLabels(),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    reverse: true,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: weeks.map((week) => _buildHeatmapWeekColumn(week, todayOnly)).toList(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 90),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text('Az', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+              const SizedBox(width: 6),
+              ...[0.15, 0.35, 0.6, 1.0].map((op) => Container(
+                width: 12, height: 12,
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                decoration: BoxDecoration(color: AppColors.xp.withOpacity(op), borderRadius: BorderRadius.circular(3)),
+              )),
+              const SizedBox(width: 6),
+              Text('Çok', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  static const List<String> _weekdayShortTr = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+
+  Widget _buildHeatmapDayLabels() {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 14),
+          for (int i = 0; i < 7; i++)
+            Container(
+              height: 14,
+              margin: const EdgeInsets.only(bottom: 4),
+              alignment: Alignment.centerLeft,
+              child: (i == 0 || i == 2 || i == 4) ? Text(_weekdayShortTr[i], style: TextStyle(fontSize: 9, color: AppColors.textMuted)) : null,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeatmapWeekColumn(List<DateTime> week, DateTime todayOnly) {
+    final monthStartsThisWeek = week.where((d) => d.day == 1);
+    final showMonthLabel = monthStartsThisWeek.isNotEmpty;
+    final monthLabel = showMonthLabel ? monthsTr[monthStartsThisWeek.first.month - 1] : '';
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(height: 14, child: showMonthLabel ? Text(monthLabel, style: TextStyle(fontSize: 9, color: AppColors.textMuted)) : null),
+          ...week.map((day) => _buildHeatmapCell(day, todayOnly)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeatmapCell(DateTime day, DateTime todayOnly) {
+    Color color = Colors.transparent;
+    if (!day.isAfter(todayOnly)) {
+      final tasks = TaskStore.getTasksForDate(day);
+      color = tasks.isEmpty ? AppColors.surfaceAlt : AppColors.xp.withOpacity(0.15 + (TaskStore.getScoreForDate(day) / 100) * 0.85);
+    }
+    final isToday = day.year == todayOnly.year && day.month == todayOnly.month && day.day == todayOnly.day;
+
+    return GestureDetector(
+      onTap: () => setState(() {
+        currentSelectedDate = day;
+        _viewMode = CalendarViewMode.monthly;
+      }),
+      child: Container(
+        width: 14, height: 14,
+        margin: const EdgeInsets.only(bottom: 4),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(3),
+          border: Border.all(color: isToday ? AppColors.xp : AppColors.border, width: isToday ? 1.5 : 0.5),
+        ),
+      ),
     );
   }
 
