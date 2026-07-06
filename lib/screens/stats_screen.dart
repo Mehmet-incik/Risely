@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../services/services.dart';
+import '../widgets/heatmap_calendar.dart';
 
 class StatsScreen extends StatelessWidget {
   const StatsScreen({super.key});
@@ -52,6 +53,10 @@ class StatsScreen extends StatelessWidget {
                   Text('İstatistikler', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.text)),
                 ],
               ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: const HeatmapCalendar(),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),

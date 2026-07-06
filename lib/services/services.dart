@@ -133,6 +133,53 @@ class TaskStore {
     return ((tasks.where((t) => t.isDone).length / tasks.length) * 100).round();
   }
 
+  // 0: o gün görev yok, 1-4: skor arttıkça artan yoğunluk kademesi (heatmap için).
+  static int getIntensityLevel(DateTime date) {
+    final tasks = getTasksForDate(date);
+    if (tasks.isEmpty) return 0;
+    final score = getScoreForDate(date);
+    if (score <= 25) return 1;
+    if (score <= 50) return 2;
+    if (score <= 75) return 3;
+    return 4;
+  }
+
+  // Son [days] gün (bugün dahil) için yoğunluk kademesini tek geçişte hesaplar;
+  // heatmap grid'inde gün başına ayrı ayrı getTasksForDate çağrısı yapmaktan kaçınır.
+  static Map<DateTime, int> getIntensityMapForLastDays(int days) {
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final startDate = todayOnly.subtract(Duration(days: days - 1));
+
+    final Map<DateTime, List<Task>> grouped = {};
+    for (final t in allTasks) {
+      final d = DateTime(t.date.year, t.date.month, t.date.day);
+      if (d.isBefore(startDate) || d.isAfter(todayOnly)) continue;
+      grouped.putIfAbsent(d, () => []).add(t);
+    }
+
+    final Map<DateTime, int> result = {};
+    for (int i = 0; i < days; i++) {
+      final day = startDate.add(Duration(days: i));
+      final dayTasks = grouped[day];
+      if (dayTasks == null || dayTasks.isEmpty) {
+        result[day] = 0;
+        continue;
+      }
+      final score = ((dayTasks.where((t) => t.isDone).length / dayTasks.length) * 100).round();
+      if (score <= 25) {
+        result[day] = 1;
+      } else if (score <= 50) {
+        result[day] = 2;
+      } else if (score <= 75) {
+        result[day] = 3;
+      } else {
+        result[day] = 4;
+      }
+    }
+    return result;
+  }
+
   static Set<DateTime> get _completedDates {
     return allTasks.where((t) => t.isDone).map((t) => DateTime(t.date.year, t.date.month, t.date.day)).toSet();
   }
