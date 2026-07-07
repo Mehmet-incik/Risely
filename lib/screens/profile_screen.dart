@@ -14,6 +14,49 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  bool? _batteryOptimizationDisabled;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshBatteryStatus();
+  }
+
+  Future<void> _refreshBatteryStatus() async {
+    final disabled = await NotificationService.isBatteryOptimizationDisabled();
+    if (mounted) setState(() => _batteryOptimizationDisabled = disabled);
+  }
+
+  void _showBatteryGuideDialog() {
+    showCupertinoDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('Bildirimler Gelmiyorsa'),
+        content: const Padding(
+          padding: EdgeInsets.only(top: 8),
+          child: Text(
+            'Telefonun pil tasarrufu, uygulama arka plandayken zamanlanmış bildirimleri engelleyebilir. '
+            'Risely\'yi pil optimizasyonundan muaf tutmanı öneririz.\n\n'
+            'Özellikle Samsung cihazlarda bu yeterli olmayabilir: Ayarlar > Pil > Arka Plan Kullanım Sınırları\'ndan '
+            'Risely\'nin "uyuyan uygulamalar" listesinde olmadığından da emin ol.',
+            style: TextStyle(fontSize: 13, height: 1.4),
+          ),
+        ),
+        actions: [
+          CupertinoDialogAction(child: const Text('Kapat'), onPressed: () => Navigator.pop(context)),
+          CupertinoDialogAction(
+            child: const Text('Pil Ayarlarını Aç'),
+            onPressed: () async {
+              Navigator.pop(context);
+              await NotificationService.requestDisableBatteryOptimization();
+              await _refreshBatteryStatus();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _pickNotificationTime() async {
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -203,6 +246,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                     onTap: _pickNotificationTime,
+                  ),
+                  _buildMenuTile(
+                    icon: Icons.battery_alert_rounded,
+                    iconColor: _batteryOptimizationDisabled == true ? Colors.green : Colors.orangeAccent,
+                    title: _batteryOptimizationDisabled == true ? 'Pil Optimizasyonundan Muaf' : 'Bildirimler Gelmiyorsa',
+                    trailing: Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+                    onTap: _showBatteryGuideDialog,
                   ),
                   // Test butonu KALDIRILDI!
                   const SizedBox(height: 24),

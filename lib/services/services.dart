@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/timezone.dart' as tz;
 import '../models/task.dart';
 
@@ -95,6 +96,18 @@ class NotificationService {
 
   static Future<void> cancelAllNotifications() async {
     await _notifications.cancelAll();
+  }
+
+  // Üreticilerin (özellikle Samsung) agresif pil optimizasyonu, uygulama arka plandayken/ekran
+  // kilitliyken zamanlanmış bildirimleri sessizce engelleyebiliyor. Bu, uygulamayı muaf tutar.
+  static Future<bool> isBatteryOptimizationDisabled() async {
+    final status = await Permission.ignoreBatteryOptimizations.status;
+    return status.isGranted;
+  }
+
+  static Future<bool> requestDisableBatteryOptimization() async {
+    final status = await Permission.ignoreBatteryOptimizations.request();
+    return status.isGranted;
   }
 }
 

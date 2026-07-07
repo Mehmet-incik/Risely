@@ -9,7 +9,7 @@ Risely, Türkçe bir alışkanlık takibi / görev planlama Android uygulaması 
 - **Streak (Seri) Sistemi**: `TaskStore.currentStreak` / `longestStreak` / `isStreakAtRisk` — görev verisinden (allTasks) türetilen computed getter'lar, ayrı bir persist alanı yok
 - **Takvim**: Haftalık/Aylık/Yıllık görünüm sekmeleri (CupertinoSlidingSegmentedControl ile)
 - **İstatistikler**: Heatmap takvimi (GitHub tarzı, son 17 hafta, 5 kademeli yoğunluk, dokununca gün detayı bottom sheet'i), Güncel Seri/En Uzun Seri kartları, tamamlanan/toplam görev, genel başarı oranı, kategori bazlı (Academic/Work/Community/Personal) ilerleme
-- **Profil**: Avatar seçici, isim değiştirme, sabah motivasyon bildirimi saati kurma, karanlık/aydınlık mod, veri sıfırlama
+- **Profil**: Avatar seçici, isim değiştirme, sabah motivasyon bildirimi saati kurma, karanlık/aydınlık mod, veri sıfırlama, pil optimizasyonu muafiyeti rehberi ("Bildirimler Gelmiyorsa" — durum gösterir, dokununca sistem izni + Samsung'a özel rehber diyalog açar)
 - **Görev formu**: Görev ekleme/düzenleme, tarih/saat seçici (özel Samsung tarzı saat seçici widget'ı), kategori seçimi, görev bazlı bildirim hatırlatıcısı
 
 ## Proje Yapısı (main.dart'tan yakın zamanda bölündü - refactor tamamlandı)
@@ -18,7 +18,7 @@ lib/
 ├── main.dart                    → başlangıç noktası + RiselyApp (tema, dark mode)
 ├── app_colors.dart              → isDarkModeNotifier + AppColors (renk paleti)
 ├── models/task.dart             → Task modeli (id, title, time, category, date, hasReminder, isDone vb.)
-├── services/services.dart       → NotificationService (bildirim zamanlama) + TaskStore (static state, SharedPreferences ile kalıcılık)
+├── services/services.dart       → NotificationService (bildirim zamanlama + pil optimizasyonu muafiyeti, permission_handler kullanır) + TaskStore (static state, SharedPreferences ile kalıcılık)
 ├── screens/
 │   ├── login_screen.dart
 │   ├── splash_screen.dart
@@ -42,9 +42,8 @@ Not: `TaskStore` ve `NotificationService` bilerek aynı dosyada (`services/servi
 Detaylı, fazlara bölünmüş yol haritası artık **roadmap.md** dosyasında (proje kökünde) — uzun vadeli plan, "bitti" tanımları, riskler ve çapraz kurallar için oraya bakılmalı. Bu dosya sadece güncel özet için tutuluyor.
 
 - **Faz 1 — Heatmap Takvim: TAMAMLANDI** (streak sistemi de dahil, bkz. Mevcut Özellikler)
-- **Sırada (Faz 1-2-3 arası sıra esnek):**
-  - Faz 2: Bildirim Güvenilirliği (eski Android'de arka planda bildirim sorunu)
-  - Faz 3: Mood Tracker (günlük ruh hali kaydı, heatmap altyapısını yeniden kullanır)
+- **Faz 2 — Bildirim Güvenilirliği: TAMAMLANDI** — pil optimizasyonu muafiyeti akışı eklendi (bkz. Mevcut Özellikler → Profil). Samsung J7 Pro (SM-J730F, Android 9) fiziksel cihazda ve Pixel 7 emülatöründe (zorla Doze modu + ekran kilitli + uygulama arka planda) test edildi: zamanlanmış görev hatırlatıcısı 3/3, sabah motivasyon bildirimi de doğrulandı.
+- **Sırada:** Faz 3: Mood Tracker (günlük ruh hali kaydı, heatmap altyapısını yeniden kullanır)
 - **Faz 4 → 5 → 7 → 8 zinciri katıdır** (Provider geçişi → Firebase → Premium → Yayın), roadmap.md'de gerekçesiyle yazılı
 - (Opsiyonel, düşük öncelik / Fikir Havuzu) `TaskStore.getUserLevelInfo()` şu an 5 seviyeli (Acemi Planlayıcı → Uzman), eskiden 9 seviyeli bir versiyon vardı, kullanıcı isterse geri getirilebilir
 
