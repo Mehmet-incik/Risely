@@ -155,6 +155,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: () async {
               TaskStore.allTasks.clear();
               await TaskStore.saveTasks();
+              TaskStore.allMoods.clear();
+              await TaskStore.saveMoods();
               widget.onTaskToggled();
               if (context.mounted) Navigator.pop(context);
               if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veriler sıfırlandı.'), backgroundColor: AppColors.xp));

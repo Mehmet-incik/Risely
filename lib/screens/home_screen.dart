@@ -14,6 +14,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  bool _moodEditing = false;
+
   List<Task> get tasks => TaskStore.getTasksForDate(DateTime.now());
   List<Task> get fixedTasks => tasks.where((t) => t.isFixed).toList()..sort((a,b) => (a.time ?? '25:00').compareTo(b.time ?? '25:00'));
   List<Task> get flexTasks => tasks.where((t) => !t.isFixed).toList();
@@ -48,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildHeader(),
             _buildMotivationCard(),
             _buildScoreCard(levelInfo),
+            _buildMoodCard(),
             if (fixedTasks.isNotEmpty) ...[
               _buildSectionLabel('SABİT ETKİNLİKLER'),
               ...fixedTasks.map((t) => _buildTaskCard(t)),
@@ -234,6 +237,49 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(99)),
       child: Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
+    );
+  }
+
+  Widget _buildMoodCard() {
+    final today = DateTime.now();
+    final todayMood = TaskStore.getMoodForDate(today);
+    final showPicker = todayMood == null || _moodEditing;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.border)),
+      child: showPicker
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Bugün nasılsın?', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.text)),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: List.generate(5, (i) => GestureDetector(
+                    onTap: () async {
+                      await TaskStore.saveMood(today, i + 1);
+                      if (mounted) setState(() => _moodEditing = false);
+                    },
+                    child: Text(TaskStore.moodEmojis[i], style: const TextStyle(fontSize: 30)),
+                  )),
+                ),
+              ],
+            )
+          : GestureDetector(
+              onTap: () => setState(() => _moodEditing = true),
+              child: Row(
+                children: [
+                  Text(TaskStore.moodEmojis[todayMood.score - 1], style: const TextStyle(fontSize: 28)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text('Bugün kendini ${TaskStore.moodLabels[todayMood.score - 1]} hissediyorsun', style: TextStyle(fontSize: 13, color: AppColors.text)),
+                  ),
+                  Icon(Icons.edit_outlined, size: 16, color: AppColors.textMuted),
+                ],
+              ),
+            ),
     );
   }
 

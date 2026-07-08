@@ -4,6 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/timezone.dart' as tz;
 import '../models/task.dart';
+import '../models/mood_entry.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
@@ -113,10 +114,14 @@ class NotificationService {
 
 class TaskStore {
   static List<Task> allTasks = [];
+  static List<MoodEntry> allMoods = [];
   static String userName = 'Kullanıcı';
   static String userAvatar = '🚀';
   static String? notificationTime;
   static DateTime? notificationStartDate;
+
+  static const List<String> moodEmojis = ['😞', '😕', '😐', '🙂', '😄'];
+  static const List<String> moodLabels = ['kötü', 'fena değil', 'idare eder', 'iyi', 'harika'];
 
   static String getTodayLabel() {
     final now = DateTime.now();
@@ -193,6 +198,53 @@ class TaskStore {
     return result;
   }
 
+  static MoodEntry? getMoodForDate(DateTime date) {
+    final target = DateTime(date.year, date.month, date.day);
+    for (final m in allMoods) {
+      final d = DateTime(m.date.year, m.date.month, m.date.day);
+      if (d == target) return m;
+    }
+    return null;
+  }
+
+  // Aynı güne ait kayıt varsa üzerine yazar (günde 1 mood kaydı kuralı).
+  static Future<void> saveMood(DateTime date, int score, {String? note}) async {
+    final target = DateTime(date.year, date.month, date.day);
+    allMoods.removeWhere((m) => DateTime(m.date.year, m.date.month, m.date.day) == target);
+    allMoods.add(MoodEntry(date: target, score: score, note: note));
+    await saveMoods();
+  }
+
+  static Future<void> saveMoods() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('saved_moods', jsonEncode(allMoods.map((m) => m.toJson()).toList()));
+  }
+
+  // Heatmap için: 0 = kayıt yok, 1-5 = mood skoru (kademe = skorun kendisi).
+  static Map<DateTime, int> getMoodIntensityMapForLastDays(int days) {
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final startDate = todayOnly.subtract(Duration(days: days - 1));
+
+    final Map<DateTime, int> result = {};
+    for (int i = 0; i < days; i++) {
+      final day = startDate.add(Duration(days: i));
+      result[day] = getMoodForDate(day)?.score ?? 0;
+    }
+    return result;
+  }
+
+  // "En üretken günlerindeki (başarı skoru %75+) ortalama ruh halin" içgörüsü için emoji döndürür.
+  static String? getProductiveMoodEmoji() {
+    final productiveScores = <int>[];
+    for (final mood in allMoods) {
+      if (getScoreForDate(mood.date) >= 75) productiveScores.add(mood.score);
+    }
+    if (productiveScores.isEmpty) return null;
+    final avg = productiveScores.reduce((a, b) => a + b) / productiveScores.length;
+    return moodEmojis[avg.round().clamp(1, 5) - 1];
+  }
+
   static Set<DateTime> get _completedDates {
     return allTasks.where((t) => t.isDone).map((t) => DateTime(t.date.year, t.date.month, t.date.day)).toSet();
   }
@@ -265,6 +317,18 @@ class TaskStore {
       }
     } else {
       allTasks = [];
+    }
+
+    final String? moodsJson = prefs.getString('saved_moods');
+    if (moodsJson != null) {
+      try {
+        final List<dynamic> decoded = jsonDecode(moodsJson);
+        allMoods = decoded.map((item) => MoodEntry.fromJson(item)).toList();
+      } catch (e) {
+        allMoods = [];
+      }
+    } else {
+      allMoods = [];
     }
   }
 

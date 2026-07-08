@@ -2,28 +2,33 @@ import 'package:flutter/material.dart';
 import '../app_colors.dart';
 import '../services/services.dart';
 
-class HeatmapCalendar extends StatelessWidget {
+enum _HeatmapMode { success, mood }
+
+class HeatmapCalendar extends StatefulWidget {
   const HeatmapCalendar({super.key});
+
+  @override
+  State<HeatmapCalendar> createState() => _HeatmapCalendarState();
+}
+
+class _HeatmapCalendarState extends State<HeatmapCalendar> {
+  _HeatmapMode _mode = _HeatmapMode.success;
 
   static const int _totalWeeks = 17; // ~120 gün
   static const List<String> _weekdayShortTr = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
   static const List<String> _monthsTr = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 
+  Color get _accent => _mode == _HeatmapMode.success ? AppColors.xp : AppColors.personal;
+  int get _maxLevel => _mode == _HeatmapMode.success ? 4 : 5;
+  String get _title => _mode == _HeatmapMode.success ? 'BAŞARI YOĞUNLUĞU · SON 17 HAFTA' : 'RUH HALİ · SON 17 HAFTA';
+
   Color _colorForLevel(int level) {
-    switch (level) {
-      case 1: return AppColors.xp.withOpacity(0.3);
-      case 2: return AppColors.xp.withOpacity(0.5);
-      case 3: return AppColors.xp.withOpacity(0.7);
-      case 4: return AppColors.xp;
-      default: return AppColors.surfaceAlt;
-    }
+    if (level <= 0) return AppColors.surfaceAlt;
+    final opacity = 0.25 + (level / _maxLevel) * 0.75;
+    return _accent.withOpacity(opacity.clamp(0.0, 1.0));
   }
 
   void _showDayDetail(BuildContext context, DateTime day) {
-    final tasks = TaskStore.getTasksForDate(day);
-    final done = tasks.where((t) => t.isDone).length;
-    final score = TaskStore.getScoreForDate(day);
-
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surface,
@@ -36,18 +41,46 @@ class HeatmapCalendar extends StatelessWidget {
           children: [
             Text('${day.day} ${_monthsTr[day.month - 1]} ${day.year}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.text)),
             const SizedBox(height: 12),
-            if (tasks.isEmpty)
-              Text('Bu gün için görev yok.', style: TextStyle(color: AppColors.textMuted, fontStyle: FontStyle.italic))
-            else ...[
-              Text('$done / ${tasks.length} görev tamamlandı', style: TextStyle(fontSize: 15, color: AppColors.text)),
-              const SizedBox(height: 6),
-              Text('Başarı: %$score', style: TextStyle(fontSize: 15, color: AppColors.xp, fontWeight: FontWeight.w600)),
-            ],
+            if (_mode == _HeatmapMode.success) ..._buildSuccessDetail(day) else ..._buildMoodDetail(day),
             const SizedBox(height: 8),
           ],
         ),
       ),
     );
+  }
+
+  List<Widget> _buildSuccessDetail(DateTime day) {
+    final tasks = TaskStore.getTasksForDate(day);
+    final done = tasks.where((t) => t.isDone).length;
+    final score = TaskStore.getScoreForDate(day);
+    if (tasks.isEmpty) {
+      return [Text('Bu gün için görev yok.', style: TextStyle(color: AppColors.textMuted, fontStyle: FontStyle.italic))];
+    }
+    return [
+      Text('$done / ${tasks.length} görev tamamlandı', style: TextStyle(fontSize: 15, color: AppColors.text)),
+      const SizedBox(height: 6),
+      Text('Başarı: %$score', style: TextStyle(fontSize: 15, color: AppColors.xp, fontWeight: FontWeight.w600)),
+    ];
+  }
+
+  List<Widget> _buildMoodDetail(DateTime day) {
+    final mood = TaskStore.getMoodForDate(day);
+    if (mood == null) {
+      return [Text('Bu gün için ruh hali kaydı yok.', style: TextStyle(color: AppColors.textMuted, fontStyle: FontStyle.italic))];
+    }
+    return [
+      Row(
+        children: [
+          Text(TaskStore.moodEmojis[mood.score - 1], style: const TextStyle(fontSize: 28)),
+          const SizedBox(width: 10),
+          Text('Kendini ${TaskStore.moodLabels[mood.score - 1]} hissetmişsin', style: TextStyle(fontSize: 15, color: AppColors.text)),
+        ],
+      ),
+      if (mood.note != null && mood.note!.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        Text(mood.note!, style: TextStyle(fontSize: 13, color: AppColors.textMuted, fontStyle: FontStyle.italic)),
+      ],
+    ];
   }
 
   @override
@@ -56,7 +89,9 @@ class HeatmapCalendar extends StatelessWidget {
     final todayOnly = DateTime(today.year, today.month, today.day);
     final currentWeekStart = todayOnly.subtract(Duration(days: todayOnly.weekday - 1));
     final firstWeekStart = currentWeekStart.subtract(const Duration(days: 7 * (_totalWeeks - 1)));
-    final intensity = TaskStore.getIntensityMapForLastDays(_totalWeeks * 7);
+    final intensity = _mode == _HeatmapMode.success
+        ? TaskStore.getIntensityMapForLastDays(_totalWeeks * 7)
+        : TaskStore.getMoodIntensityMapForLastDays(_totalWeeks * 7);
 
     final weeks = List.generate(_totalWeeks, (w) {
       final weekStart = firstWeekStart.add(Duration(days: w * 7));
@@ -69,7 +104,13 @@ class HeatmapCalendar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('BAŞARI YOĞUNLUĞU · SON 17 HAFTA', style: TextStyle(fontSize: 11, color: AppColors.textMuted, letterSpacing: 1.2)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(child: Text(_title, style: TextStyle(fontSize: 11, color: AppColors.textMuted, letterSpacing: 1.2))),
+              _buildModeToggle(),
+            ],
+          ),
           const SizedBox(height: 12),
           SizedBox(
             height: 14 + 7 * 18,
@@ -96,7 +137,7 @@ class HeatmapCalendar extends StatelessWidget {
             children: [
               Text('Az', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
               const SizedBox(width: 6),
-              ...List.generate(5, (level) => Container(
+              ...List.generate(_maxLevel + 1, (level) => Container(
                 width: 12, height: 12,
                 margin: const EdgeInsets.symmetric(horizontal: 2),
                 decoration: BoxDecoration(color: _colorForLevel(level), borderRadius: BorderRadius.circular(3)),
@@ -106,6 +147,33 @@ class HeatmapCalendar extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildModeToggle() {
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(99)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildModeChip('Başarı', _HeatmapMode.success),
+          _buildModeChip('Ruh Hali', _HeatmapMode.mood),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeChip(String label, _HeatmapMode mode) {
+    final selected = _mode == mode;
+    final color = mode == _HeatmapMode.success ? AppColors.xp : AppColors.personal;
+    return GestureDetector(
+      onTap: () => setState(() => _mode = mode),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(color: selected ? color.withOpacity(0.15) : Colors.transparent, borderRadius: BorderRadius.circular(99)),
+        child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: selected ? color : AppColors.textMuted)),
       ),
     );
   }

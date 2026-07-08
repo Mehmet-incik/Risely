@@ -58,6 +58,23 @@ class StatsScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
               child: const HeatmapCalendar(),
             ),
+            if (TaskStore.getProductiveMoodEmoji() != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
+                  child: Row(
+                    children: [
+                      Text(TaskStore.getProductiveMoodEmoji()!, style: const TextStyle(fontSize: 22)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text('En üretken olduğun günlerdeki ortalama ruh halin bu', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
