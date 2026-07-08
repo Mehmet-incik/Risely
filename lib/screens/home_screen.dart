@@ -6,9 +6,8 @@ import '../services/services.dart';
 import 'task_form.dart';
 
 class HomeScreen extends StatefulWidget {
-  final VoidCallback onTaskToggled;
   final VoidCallback onHelpTapped;
-  const HomeScreen({super.key, required this.onTaskToggled, required this.onHelpTapped});
+  const HomeScreen({super.key, required this.onHelpTapped});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -25,20 +24,13 @@ class _HomeScreenState extends State<HomeScreen> {
   int get doneTasks => tasks.where((t) => t.isDone).length;
   int get percentage => tasks.isEmpty ? 0 : ((doneTasks / tasks.length) * 100).round();
 
-  void toggleTask(String id) {
-    taskStore.toggleTask(id);
-    setState(() {});
-    widget.onTaskToggled();
-  }
+  void toggleTask(String id) => taskStore.toggleTask(id);
 
-  void deleteTask(Task task) {
-    taskStore.deleteTask(task);
-    setState(() {});
-    widget.onTaskToggled();
-  }
+  void deleteTask(Task task) => taskStore.deleteTask(task);
 
   @override
   Widget build(BuildContext context) {
+    context.watch<TaskStore>();
     final levelInfo = taskStore.getUserLevelInfo();
     return SafeArea(
       child: SingleChildScrollView(
@@ -309,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          showTaskForm(context, task: task, onSaved: widget.onTaskToggled);
+          showTaskForm(context, task: task, onSaved: () {});
           return false;
         }
         return true;

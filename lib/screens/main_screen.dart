@@ -110,7 +110,7 @@ class _MainScreenState extends State<MainScreen> {
       valueListenable: isDarkModeNotifier,
       builder: (context, isDark, _) {
         final screens = [
-          HomeScreen(onTaskToggled: _onTaskToggled, onHelpTapped: () => setState(() => _showTutorial = true)),
+          HomeScreen(onHelpTapped: () => setState(() => _showTutorial = true)),
           CalendarScreen(onTaskToggled: _onTaskToggled),
           const StatsScreen(),
           ProfileScreen(onTaskToggled: _onTaskToggled),
