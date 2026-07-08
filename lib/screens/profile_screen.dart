@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
 import '../services/services.dart';
@@ -15,6 +16,8 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool? _batteryOptimizationDisabled;
+
+  TaskStore get taskStore => context.read<TaskStore>();
 
   @override
   void initState() {
@@ -64,13 +67,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       isScrollControlled: true,
       builder: (context) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: SamsungStyleTimePicker(initialTime: TaskStore.notificationTime ?? '07:00'),
+        child: SamsungStyleTimePicker(initialTime: taskStore.notificationTime ?? '07:00'),
       ),
     );
     if (result != null && context.mounted) {
       final parts = result.split(':');
-      await TaskStore.saveNotificationTime(result);
-      await NotificationService.scheduleMorningMotivation(int.parse(parts[0]), int.parse(parts[1]));
+      await taskStore.saveNotificationTime(result);
+      await NotificationService.scheduleMorningMotivation(int.parse(parts[0]), int.parse(parts[1]), taskStore.userName);
       setState(() {});
       widget.onTaskToggled();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('🔔 Her sabah $result\'da motivasyon gelecek!'), backgroundColor: AppColors.xp));
@@ -78,7 +81,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _cancelNotifications() async {
-    await TaskStore.saveNotificationTime(null);
+    await taskStore.saveNotificationTime(null);
     await NotificationService.cancelAllNotifications();
     setState(() {});
     widget.onTaskToggled();
@@ -88,7 +91,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showEditProfileSheet() {
-    final nameCtrl = TextEditingController(text: TaskStore.userName);
+    final nameCtrl = TextEditingController(text: taskStore.userName);
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surface,
@@ -125,7 +128,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 onPressed: () async {
                   if (nameCtrl.text.isNotEmpty) {
-                    await TaskStore.saveUserName(nameCtrl.text);
+                    await taskStore.saveUserName(nameCtrl.text);
                     setState(() {});
                     widget.onTaskToggled();
                   }
@@ -153,10 +156,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             isDestructiveAction: true,
             child: const Text('Evet, Sil'),
             onPressed: () async {
-              TaskStore.allTasks.clear();
-              await TaskStore.saveTasks();
-              TaskStore.allMoods.clear();
-              await TaskStore.saveMoods();
+              await taskStore.clearAllData();
               widget.onTaskToggled();
               if (context.mounted) Navigator.pop(context);
               if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veriler sıfırlandı.'), backgroundColor: AppColors.xp));
@@ -169,8 +169,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final levelInfo = TaskStore.getUserLevelInfo();
-    final doneTasks = TaskStore.allTasks.where((t) => t.isDone).length;
+    final levelInfo = taskStore.getUserLevelInfo();
+    final doneTasks = taskStore.allTasks.where((t) => t.isDone).length;
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -184,7 +184,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 backgroundColor: Colors.transparent,
                 isScrollControlled: true,
                 builder: (context) => AvatarPickerSheet(
-                  currentAvatar: TaskStore.userAvatar,
+                  currentAvatar: taskStore.userAvatar,
                   onSelected: (a) {
                     setState(() {});
                     widget.onTaskToggled();
@@ -196,7 +196,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Container(
                     width: 100, height: 100,
                     decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [AppColors.xp, AppColors.academic])),
-                    child: Center(child: Text(TaskStore.userAvatar, style: const TextStyle(fontSize: 48))),
+                    child: Center(child: Text(taskStore.userAvatar, style: const TextStyle(fontSize: 48))),
                   ),
                   Positioned(
                     bottom: 0, right: 0,
@@ -210,7 +210,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Text(TaskStore.userName, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.text)),
+            Text(taskStore.userName, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.text)),
             const SizedBox(height: 4),
             Text('Seviye ${levelInfo['level']} • ${levelInfo['title']}', style: const TextStyle(fontSize: 14, color: AppColors.xp, fontWeight: FontWeight.w600)),
             const SizedBox(height: 32),
@@ -218,7 +218,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  _buildStatCard('Puan', '${TaskStore.totalXp} XP', AppColors.xp),
+                  _buildStatCard('Puan', '${taskStore.totalXp} XP', AppColors.xp),
                   const SizedBox(width: 12),
                   _buildStatCard('Görev', '$doneTasks Adet', AppColors.work),
                 ],
@@ -234,12 +234,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 16),
                   _buildMenuTile(
                     icon: Icons.notifications_active_rounded,
-                    iconColor: TaskStore.notificationTime != null ? AppColors.xp : AppColors.textMuted,
-                    title: TaskStore.notificationTime != null ? 'Sabah Bildirimi (${TaskStore.notificationTime})' : 'Sabah Motivasyonu Kur',
+                    iconColor: taskStore.notificationTime != null ? AppColors.xp : AppColors.textMuted,
+                    title: taskStore.notificationTime != null ? 'Sabah Bildirimi (${taskStore.notificationTime})' : 'Sabah Motivasyonu Kur',
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (TaskStore.notificationTime != null)
+                        if (taskStore.notificationTime != null)
                           GestureDetector(
                             onTap: _cancelNotifications,
                             child: const Padding(padding: EdgeInsets.all(8), child: Icon(Icons.cancel, color: Colors.redAccent, size: 20)),
@@ -346,6 +346,8 @@ class AvatarPickerSheet extends StatefulWidget {
 }
 
 class _AvatarPickerSheetState extends State<AvatarPickerSheet> {
+  TaskStore get taskStore => context.read<TaskStore>();
+
   late String selected;
   final List<Map<String, String>> avatars = [
     {'emoji': '🦅', 'name': 'Kartal'}, {'emoji': '🦁', 'name': 'Aslan'}, {'emoji': '🤖', 'name': 'Robot'},
@@ -418,7 +420,7 @@ class _AvatarPickerSheetState extends State<AvatarPickerSheet> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () async {
-                await TaskStore.saveAvatar(selected);
+                await taskStore.saveAvatar(selected);
                 widget.onSelected(selected);
                 Navigator.pop(context);
               },

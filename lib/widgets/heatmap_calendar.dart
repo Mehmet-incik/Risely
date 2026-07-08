@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../app_colors.dart';
 import '../services/services.dart';
 
@@ -12,6 +13,8 @@ class HeatmapCalendar extends StatefulWidget {
 }
 
 class _HeatmapCalendarState extends State<HeatmapCalendar> {
+  TaskStore get taskStore => context.read<TaskStore>();
+
   _HeatmapMode _mode = _HeatmapMode.success;
 
   static const int _totalWeeks = 17; // ~120 gün
@@ -50,9 +53,9 @@ class _HeatmapCalendarState extends State<HeatmapCalendar> {
   }
 
   List<Widget> _buildSuccessDetail(DateTime day) {
-    final tasks = TaskStore.getTasksForDate(day);
+    final tasks = taskStore.getTasksForDate(day);
     final done = tasks.where((t) => t.isDone).length;
-    final score = TaskStore.getScoreForDate(day);
+    final score = taskStore.getScoreForDate(day);
     if (tasks.isEmpty) {
       return [Text('Bu gün için görev yok.', style: TextStyle(color: AppColors.textMuted, fontStyle: FontStyle.italic))];
     }
@@ -64,7 +67,7 @@ class _HeatmapCalendarState extends State<HeatmapCalendar> {
   }
 
   List<Widget> _buildMoodDetail(DateTime day) {
-    final mood = TaskStore.getMoodForDate(day);
+    final mood = taskStore.getMoodForDate(day);
     if (mood == null) {
       return [Text('Bu gün için ruh hali kaydı yok.', style: TextStyle(color: AppColors.textMuted, fontStyle: FontStyle.italic))];
     }
@@ -90,8 +93,8 @@ class _HeatmapCalendarState extends State<HeatmapCalendar> {
     final currentWeekStart = todayOnly.subtract(Duration(days: todayOnly.weekday - 1));
     final firstWeekStart = currentWeekStart.subtract(const Duration(days: 7 * (_totalWeeks - 1)));
     final intensity = _mode == _HeatmapMode.success
-        ? TaskStore.getIntensityMapForLastDays(_totalWeeks * 7)
-        : TaskStore.getMoodIntensityMapForLastDays(_totalWeeks * 7);
+        ? taskStore.getIntensityMapForLastDays(_totalWeeks * 7)
+        : taskStore.getMoodIntensityMapForLastDays(_totalWeeks * 7);
 
     final weeks = List.generate(_totalWeeks, (w) {
       final weekStart = firstWeekStart.add(Duration(days: w * 7));

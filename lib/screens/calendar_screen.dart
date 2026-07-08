@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:provider/provider.dart';
 import '../app_colors.dart';
 import '../models/task.dart';
 import '../services/services.dart';
@@ -25,19 +26,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
   final List<String> daysTr = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
   final List<String> monthsTr = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 
+  TaskStore get taskStore => context.read<TaskStore>();
+
   void toggleTask(String id) {
-    setState(() {
-      final task = TaskStore.allTasks.firstWhere((t) => t.id == id);
-      task.isDone = !task.isDone;
-    });
-    TaskStore.saveTasks();
+    taskStore.toggleTask(id);
+    setState(() {});
     widget.onTaskToggled();
   }
 
   void deleteTask(Task task) {
-    setState(() => TaskStore.allTasks.removeWhere((t) => t.id == task.id));
-    if (task.hasReminder) NotificationService.cancelTaskReminder(task.notificationId);
-    TaskStore.saveTasks();
+    taskStore.deleteTask(task);
+    setState(() {});
     widget.onTaskToggled();
   }
 
@@ -107,7 +106,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             itemCount: 7,
             itemBuilder: (context, i) {
               DateTime day = startOfWeek.add(Duration(days: i));
-              List<Task> dayTasks = TaskStore.getTasksForDate(day)..sort((a,b) => (a.time ?? '25:00').compareTo(b.time ?? '25:00'));
+              List<Task> dayTasks = taskStore.getTasksForDate(day)..sort((a,b) => (a.time ?? '25:00').compareTo(b.time ?? '25:00'));
               bool isToday = day.year == DateTime.now().year && day.month == DateTime.now().month && day.day == DateTime.now().day;
               bool isSelected = day.year == currentSelectedDate.year && day.month == currentSelectedDate.month && day.day == currentSelectedDate.day;
 
@@ -228,7 +227,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildMonthlyView() {
-    final todayTasks = TaskStore.getTasksForDate(currentSelectedDate)..sort((a, b) => (a.time ?? '25:00').compareTo(b.time ?? '25:00'));
+    final todayTasks = taskStore.getTasksForDate(currentSelectedDate)..sort((a, b) => (a.time ?? '25:00').compareTo(b.time ?? '25:00'));
     return Column(
       key: const ValueKey('monthly'),
       children: [

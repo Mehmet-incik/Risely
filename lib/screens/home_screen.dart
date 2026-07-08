@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../app_colors.dart';
 import '../models/task.dart';
 import '../services/services.dart';
@@ -16,31 +17,29 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool _moodEditing = false;
 
-  List<Task> get tasks => TaskStore.getTasksForDate(DateTime.now());
+  TaskStore get taskStore => context.read<TaskStore>();
+
+  List<Task> get tasks => taskStore.getTasksForDate(DateTime.now());
   List<Task> get fixedTasks => tasks.where((t) => t.isFixed).toList()..sort((a,b) => (a.time ?? '25:00').compareTo(b.time ?? '25:00'));
   List<Task> get flexTasks => tasks.where((t) => !t.isFixed).toList();
   int get doneTasks => tasks.where((t) => t.isDone).length;
   int get percentage => tasks.isEmpty ? 0 : ((doneTasks / tasks.length) * 100).round();
 
   void toggleTask(String id) {
-    setState(() {
-      final task = TaskStore.allTasks.firstWhere((t) => t.id == id);
-      task.isDone = !task.isDone;
-    });
-    TaskStore.saveTasks();
+    taskStore.toggleTask(id);
+    setState(() {});
     widget.onTaskToggled();
   }
 
   void deleteTask(Task task) {
-    setState(() => TaskStore.allTasks.removeWhere((t) => t.id == task.id));
-    if (task.hasReminder) NotificationService.cancelTaskReminder(task.notificationId);
-    TaskStore.saveTasks();
+    taskStore.deleteTask(task);
+    setState(() {});
     widget.onTaskToggled();
   }
 
   @override
   Widget build(BuildContext context) {
-    final levelInfo = TaskStore.getUserLevelInfo();
+    final levelInfo = taskStore.getUserLevelInfo();
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.only(bottom: 80),
@@ -91,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Text(TaskStore.getTodayLabel(), style: TextStyle(fontSize: 12, color: AppColors.textMuted, letterSpacing: 1.5)),
               const SizedBox(height: 4),
-              Text('Günaydın, ${TaskStore.userName} 👋', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.text)),
+              Text('Günaydın, ${taskStore.userName} 👋', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.text)),
             ],
           ),
           Row(
@@ -108,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 width: 42, height: 42,
                 decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [AppColors.xp, AppColors.academic])),
-                child: Center(child: Text(TaskStore.userAvatar, style: const TextStyle(fontSize: 20))),
+                child: Center(child: Text(taskStore.userAvatar, style: const TextStyle(fontSize: 20))),
               ),
             ],
           ),
@@ -118,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMotivationCard() {
-    final msg = TaskStore.getDailyMotivation();
+    final msg = taskStore.getDailyMotivation();
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       padding: const EdgeInsets.all(16),
@@ -217,8 +216,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildStreakBadge() {
-    final streak = TaskStore.currentStreak;
-    final atRisk = TaskStore.isStreakAtRisk;
+    final streak = taskStore.currentStreak;
+    final atRisk = taskStore.isStreakAtRisk;
 
     String label;
     Color color;
@@ -242,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMoodCard() {
     final today = DateTime.now();
-    final todayMood = TaskStore.getMoodForDate(today);
+    final todayMood = taskStore.getMoodForDate(today);
     final showPicker = todayMood == null || _moodEditing;
 
     return Container(
@@ -259,7 +258,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: List.generate(5, (i) => GestureDetector(
                     onTap: () async {
-                      await TaskStore.saveMood(today, i + 1);
+                      await taskStore.saveMood(today, i + 1);
                       if (mounted) setState(() => _moodEditing = false);
                     },
                     child: Text(TaskStore.moodEmojis[i], style: const TextStyle(fontSize: 30)),

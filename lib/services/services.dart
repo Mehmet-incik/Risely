@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -57,7 +58,7 @@ class NotificationService {
     await _notifications.cancel(notificationId);
   }
 
-  static Future<void> scheduleMorningMotivation(int hour, int minute) async {
+  static Future<void> scheduleMorningMotivation(int hour, int minute, String userName) async {
     for(int i=0; i<60; i++) { await _notifications.cancel(i); }
 
     final local = tz.local;
@@ -69,7 +70,7 @@ class NotificationService {
       final msg = messages[i % messages.length];
       await _notifications.zonedSchedule(
         i,
-        "${msg['icon']} ${msg['greeting']}, ${TaskStore.userName}",
+        "${msg['icon']} ${msg['greeting']}, $userName",
         msg['body']!,
         scheduledDate,
         const NotificationDetails(
@@ -112,13 +113,13 @@ class NotificationService {
   }
 }
 
-class TaskStore {
-  static List<Task> allTasks = [];
-  static List<MoodEntry> allMoods = [];
-  static String userName = 'Kullanıcı';
-  static String userAvatar = '🚀';
-  static String? notificationTime;
-  static DateTime? notificationStartDate;
+class TaskStore extends ChangeNotifier {
+  List<Task> allTasks = [];
+  List<MoodEntry> allMoods = [];
+  String userName = 'Kullanıcı';
+  String userAvatar = '🚀';
+  String? notificationTime;
+  DateTime? notificationStartDate;
 
   static const List<String> moodEmojis = ['😞', '😕', '😐', '🙂', '😄'];
   static const List<String> moodLabels = ['kötü', 'fena değil', 'idare eder', 'iyi', 'harika'];
@@ -130,9 +131,9 @@ class TaskStore {
     return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]}';
   }
 
-  static int get totalXp => allTasks.where((t) => t.isDone).length * 15;
+  int get totalXp => allTasks.where((t) => t.isDone).length * 15;
 
-  static Map<String, dynamic> getUserLevelInfo() {
+  Map<String, dynamic> getUserLevelInfo() {
     int xp = totalXp;
     if (xp < 75) return {'level': 1, 'title': 'Acemi Planlayıcı'};
     if (xp < 150) return {'level': 2, 'title': 'Çaylak'};
@@ -141,18 +142,18 @@ class TaskStore {
     return {'level': 5, 'title': 'Uzman'};
   }
 
-  static List<Task> getTasksForDate(DateTime date) {
+  List<Task> getTasksForDate(DateTime date) {
     return allTasks.where((t) => t.date.year == date.year && t.date.month == date.month && t.date.day == date.day).toList();
   }
 
-  static int getScoreForDate(DateTime date) {
+  int getScoreForDate(DateTime date) {
     final tasks = getTasksForDate(date);
     if (tasks.isEmpty) return 0;
     return ((tasks.where((t) => t.isDone).length / tasks.length) * 100).round();
   }
 
   // 0: o gün görev yok, 1-4: skor arttıkça artan yoğunluk kademesi (heatmap için).
-  static int getIntensityLevel(DateTime date) {
+  int getIntensityLevel(DateTime date) {
     final tasks = getTasksForDate(date);
     if (tasks.isEmpty) return 0;
     final score = getScoreForDate(date);
@@ -162,9 +163,34 @@ class TaskStore {
     return 4;
   }
 
+  // Görev toggle/silme/ekleme, ekranlar arasında dağınık haldeydi (Faz 4 görev 2 öncesi);
+  // Provider'a geçişte tek yerden yönetilmesi ve notifyListeners() ile bağlanması için buraya taşındı.
+  Future<void> toggleTask(String id) async {
+    final task = allTasks.firstWhere((t) => t.id == id);
+    task.isDone = !task.isDone;
+    await saveTasks();
+  }
+
+  Future<void> deleteTask(Task task) async {
+    allTasks.removeWhere((t) => t.id == task.id);
+    if (task.hasReminder) NotificationService.cancelTaskReminder(task.notificationId);
+    await saveTasks();
+  }
+
+  void addTask(Task task) {
+    allTasks.add(task);
+  }
+
+  Future<void> clearAllData() async {
+    allTasks.clear();
+    await saveTasks();
+    allMoods.clear();
+    await saveMoods();
+  }
+
   // Son [days] gün (bugün dahil) için yoğunluk kademesini tek geçişte hesaplar;
   // heatmap grid'inde gün başına ayrı ayrı getTasksForDate çağrısı yapmaktan kaçınır.
-  static Map<DateTime, int> getIntensityMapForLastDays(int days) {
+  Map<DateTime, int> getIntensityMapForLastDays(int days) {
     final today = DateTime.now();
     final todayOnly = DateTime(today.year, today.month, today.day);
     final startDate = todayOnly.subtract(Duration(days: days - 1));
@@ -198,7 +224,7 @@ class TaskStore {
     return result;
   }
 
-  static MoodEntry? getMoodForDate(DateTime date) {
+  MoodEntry? getMoodForDate(DateTime date) {
     final target = DateTime(date.year, date.month, date.day);
     for (final m in allMoods) {
       final d = DateTime(m.date.year, m.date.month, m.date.day);
@@ -208,20 +234,21 @@ class TaskStore {
   }
 
   // Aynı güne ait kayıt varsa üzerine yazar (günde 1 mood kaydı kuralı).
-  static Future<void> saveMood(DateTime date, int score, {String? note}) async {
+  Future<void> saveMood(DateTime date, int score, {String? note}) async {
     final target = DateTime(date.year, date.month, date.day);
     allMoods.removeWhere((m) => DateTime(m.date.year, m.date.month, m.date.day) == target);
     allMoods.add(MoodEntry(date: target, score: score, note: note));
     await saveMoods();
   }
 
-  static Future<void> saveMoods() async {
+  Future<void> saveMoods() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('saved_moods', jsonEncode(allMoods.map((m) => m.toJson()).toList()));
+    notifyListeners();
   }
 
   // Heatmap için: 0 = kayıt yok, 1-5 = mood skoru (kademe = skorun kendisi).
-  static Map<DateTime, int> getMoodIntensityMapForLastDays(int days) {
+  Map<DateTime, int> getMoodIntensityMapForLastDays(int days) {
     final today = DateTime.now();
     final todayOnly = DateTime(today.year, today.month, today.day);
     final startDate = todayOnly.subtract(Duration(days: days - 1));
@@ -235,7 +262,7 @@ class TaskStore {
   }
 
   // "En üretken günlerindeki (başarı skoru %75+) ortalama ruh halin" içgörüsü için emoji döndürür.
-  static String? getProductiveMoodEmoji() {
+  String? getProductiveMoodEmoji() {
     final productiveScores = <int>[];
     for (final mood in allMoods) {
       if (getScoreForDate(mood.date) >= 75) productiveScores.add(mood.score);
@@ -245,12 +272,12 @@ class TaskStore {
     return moodEmojis[avg.round().clamp(1, 5) - 1];
   }
 
-  static Set<DateTime> get _completedDates {
+  Set<DateTime> get _completedDates {
     return allTasks.where((t) => t.isDone).map((t) => DateTime(t.date.year, t.date.month, t.date.day)).toSet();
   }
 
   // Bugün henüz görev bitirilmemişse dünden geriye sayar (seri "risk altında" gösterilir ama kırılmış sayılmaz).
-  static int get currentStreak {
+  int get currentStreak {
     final completed = _completedDates;
     final now = DateTime.now();
     DateTime cursor = DateTime(now.year, now.month, now.day);
@@ -264,7 +291,7 @@ class TaskStore {
     return streak;
   }
 
-  static int get longestStreak {
+  int get longestStreak {
     final completed = _completedDates.toList()..sort();
     if (completed.isEmpty) return 0;
 
@@ -282,13 +309,13 @@ class TaskStore {
     return longest;
   }
 
-  static bool get isStreakAtRisk {
+  bool get isStreakAtRisk {
     if (currentStreak == 0) return false;
     final now = DateTime.now();
     return !_completedDates.contains(DateTime(now.year, now.month, now.day));
   }
 
-  static Map<String, String> getDailyMotivation() {
+  Map<String, String> getDailyMotivation() {
     if (notificationStartDate == null) return NotificationService.messages[DateTime.now().day % NotificationService.messages.length];
     final now = DateTime.now();
     final startMidnight = DateTime(notificationStartDate!.year, notificationStartDate!.month, notificationStartDate!.day);
@@ -298,7 +325,7 @@ class TaskStore {
     return NotificationService.messages[diffDays % NotificationService.messages.length];
   }
 
-  static Future<void> loadData() async {
+  Future<void> loadData() async {
     final prefs = await SharedPreferences.getInstance();
     userName = prefs.getString('user_name') ?? 'Kullanıcı';
     userAvatar = prefs.getString('user_avatar') ?? '🚀';
@@ -330,26 +357,30 @@ class TaskStore {
     } else {
       allMoods = [];
     }
+    notifyListeners();
   }
 
-  static Future<void> saveTasks() async {
+  Future<void> saveTasks() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('saved_tasks', jsonEncode(allTasks.map((t) => t.toJson()).toList()));
+    notifyListeners();
   }
 
-  static Future<void> saveUserName(String name) async {
+  Future<void> saveUserName(String name) async {
     userName = name;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_name', name);
+    notifyListeners();
   }
 
-  static Future<void> saveAvatar(String avatar) async {
+  Future<void> saveAvatar(String avatar) async {
     userAvatar = avatar;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_avatar', avatar);
+    notifyListeners();
   }
 
-  static Future<void> saveNotificationTime(String? time) async {
+  Future<void> saveNotificationTime(String? time) async {
     notificationTime = time;
     final prefs = await SharedPreferences.getInstance();
     if (time != null) {
@@ -361,5 +392,6 @@ class TaskStore {
       await prefs.remove('notification_start_date');
       notificationStartDate = null;
     }
+    notifyListeners();
   }
 }

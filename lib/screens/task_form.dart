@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:provider/provider.dart';
 import '../app_colors.dart';
 import '../models/task.dart';
 import '../services/services.dart';
@@ -27,6 +28,8 @@ class TaskFormSheet extends StatefulWidget {
 }
 
 class _TaskFormSheetState extends State<TaskFormSheet> {
+  TaskStore get taskStore => context.read<TaskStore>();
+
   late TextEditingController controller;
   late String selectedCategory;
   String? selectedTime;
@@ -279,7 +282,7 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
                       hasReminder: hasReminder,
                       reminderOffset: selectedReminderOffset,
                     );
-                    TaskStore.allTasks.add(finalTask);
+                    taskStore.addTask(finalTask);
                   } else {
                     finalTask = widget.task!;
                     finalTask.title = controller.text;
@@ -299,7 +302,7 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
                     await NotificationService.cancelTaskReminder(finalTask.notificationId);
                   }
 
-                  TaskStore.saveTasks();
+                  taskStore.saveTasks();
                   widget.onSaved();
                   if (context.mounted) Navigator.pop(context);
                 }

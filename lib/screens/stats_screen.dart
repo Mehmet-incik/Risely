@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../app_colors.dart';
 import '../services/services.dart';
 import '../widgets/heatmap_calendar.dart';
@@ -18,7 +19,8 @@ class StatsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tasks = TaskStore.allTasks;
+    final taskStore = context.read<TaskStore>();
+    final tasks = taskStore.allTasks;
     final total = tasks.length;
     final done = tasks.where((t) => t.isDone).length;
     final pct = total == 0 ? 0 : ((done / total) * 100).round();
@@ -58,7 +60,7 @@ class StatsScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
               child: const HeatmapCalendar(),
             ),
-            if (TaskStore.getProductiveMoodEmoji() != null)
+            if (taskStore.getProductiveMoodEmoji() != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                 child: Container(
@@ -66,7 +68,7 @@ class StatsScreen extends StatelessWidget {
                   decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.border)),
                   child: Row(
                     children: [
-                      Text(TaskStore.getProductiveMoodEmoji()!, style: const TextStyle(fontSize: 22)),
+                      Text(taskStore.getProductiveMoodEmoji()!, style: const TextStyle(fontSize: 22)),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text('En üretken olduğun günlerdeki ortalama ruh halin bu', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
@@ -139,7 +141,7 @@ class StatsScreen extends StatelessWidget {
                             child: const Icon(Icons.local_fire_department_rounded, color: AppColors.work, size: 24),
                           ),
                           const SizedBox(height: 16),
-                          Text('${TaskStore.currentStreak}', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.text)),
+                          Text('${taskStore.currentStreak}', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.text)),
                           Text('Güncel Seri', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                         ],
                       ),
@@ -159,7 +161,7 @@ class StatsScreen extends StatelessWidget {
                             child: const Icon(Icons.emoji_events_rounded, color: Colors.amber, size: 24),
                           ),
                           const SizedBox(height: 16),
-                          Text('${TaskStore.longestStreak}', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.text)),
+                          Text('${taskStore.longestStreak}', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.text)),
                           Text('En Uzun Seri', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                         ],
                       ),
