@@ -273,6 +273,7 @@ Login/Splash akışı · Ana ekran (görev listesi, XP/başarı skoru) · Takvim
 - iOS sürümü
 - Arkadaşlarla streak yarışması / sosyal özellikler
 - Yapay zeka destekli görev önerileri
+- Google ile oturum aç (Google Sign-In) — Faz 5 sırasında akla geldi (2026-07-09), e-posta/şifre + misafirden daha az sürtünmeli olabilir ama SHA-1 sertifika parmak izi kaydı + `google_sign_in` paketi + LoginScreen'e yeni buton gerektiriyor; Faz 5 çekirdeği bitmeden kapsamı büyütmemek için ertelendi
 
 ---
 
