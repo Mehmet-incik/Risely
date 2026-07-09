@@ -1,4 +1,4 @@
-package com.example.risely
+package com.mehmetincik.risely
 
 import io.flutter.embedding.android.FlutterActivity
 
