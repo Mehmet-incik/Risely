@@ -20,7 +20,9 @@ lib/
 ├── app_colors.dart              → isDarkModeNotifier + AppColors (renk paleti)
 ├── models/task.dart              → Task modeli (id, title, time, category, date, hasReminder, isDone vb.)
 ├── models/mood_entry.dart       → MoodEntry modeli (date, score 1-5, opsiyonel note)
-├── services/services.dart       → NotificationService (bildirim zamanlama + pil optimizasyonu muafiyeti, permission_handler kullanır) + TaskStore (ChangeNotifier, instance state, SharedPreferences ile kalıcılık — main.dart'ta ChangeNotifierProvider ile sağlanıyor)
+├── services/services.dart       → TaskStore (ChangeNotifier, instance state, SharedPreferences ile kalıcılık — main.dart'ta ChangeNotifierProvider ile sağlanıyor)
+├── services/notification_service.dart → NotificationService (bildirim zamanlama + pil optimizasyonu muafiyeti, permission_handler kullanır)
+├── services/motivation_messages.dart  → motivationMessages sabiti (TaskStore ve NotificationService'in ortak bağımsız veri kaynağı)
 ├── screens/
 │   ├── login_screen.dart
 │   ├── splash_screen.dart
@@ -35,19 +37,17 @@ lib/
     └── heatmap_calendar.dart    → HeatmapCalendar (StatsScreen üstünde, StatefulWidget; Başarı/Ruh Hali modları arasında geçiş yapar, TaskStore.getIntensityMapForLastDays / getMoodIntensityMapForLastDays kullanır)
 ```
 
-Not: `TaskStore` ve `NotificationService` bilerek aynı dosyada (`services/services.dart`) tutuldu çünkü birbirlerine çapraz referans veriyorlar (TaskStore.getDailyMotivation → NotificationService.messages, NotificationService → TaskStore.userName) - ayırmak döngüsel import sorunu yaratırdı.
-
 ## Veri Yönetimi
-`TaskStore` artık `ChangeNotifier` — instance state, `main.dart`'ta `ChangeNotifierProvider` ile sağlanıyor, `SharedPreferences` ile diskte JSON olarak saklanıyor. Ekranlar `context.watch<TaskStore>()` ile otomatik yeniden çiziliyor (Home/Stats/Calendar/Profile), mutasyonlar (`addTask`/`toggleTask`/`deleteTask`/`clearAllData` vb.) TaskStore içinde encapsulate. Eski `onTaskToggled` callback zinciri (main_screen.dart → ekranlar → showTaskForm) tamamen kaldırıldı. Detay: roadmap.md Faz 4.
+`TaskStore` artık `ChangeNotifier` — instance state, `main.dart`'ta `ChangeNotifierProvider` ile sağlanıyor, `SharedPreferences` ile diskte JSON olarak saklanıyor. Ekranlar `context.watch<TaskStore>()` ile otomatik yeniden çiziliyor (Home/Stats/Calendar/Profile), mutasyonlar (`addTask`/`toggleTask`/`deleteTask`/`clearAllData` vb.) TaskStore içinde encapsulate. Eski `onTaskToggled` callback zinciri (main_screen.dart → ekranlar → showTaskForm) tamamen kaldırıldı. `NotificationService` artık ayrı dosyada (`notification_service.dart`); TaskStore ona sadece `deleteTask` içinde tek yönlü bağımlı (döngüsel bağımlılık yok). Detay: roadmap.md Faz 4.
 
 ## Sırada Ne Var
 Detaylı, fazlara bölünmüş yol haritası artık **roadmap.md** dosyasında (proje kökünde) — uzun vadeli plan, "bitti" tanımları, riskler ve çapraz kurallar için oraya bakılmalı. Bu dosya sadece güncel özet için tutuluyor.
 
 - **Faz 1 — Heatmap Takvim: TAMAMLANDI** (streak sistemi de dahil, bkz. Mevcut Özellikler)
-- **Faz 2 — Bildirim Güvenilirliği: TAMAMLANDI** — pil optimizasyonu muafiyeti akışı eklendi (bkz. Mevcut Özellikler → Profil). Samsung J7 Pro (SM-J730F, Android 9) fiziksel cihazda ve Pixel 7 emülatöründe (zorla Doze modu + ekran kilitli + uygulama arka planda) test edildi: zamanlanmış görev hatırlatıcısı 3/3, sabah motivasyon bildirimi de doğrulandı.
+- **Faz 2 — Bildirim Güvenilirliği: TAMAMLANDI** — pil optimizasyonu muafiyeti akışı eklendi (bkz. Mevcut Özellikler → Profil). Samsung J7 Pro (SM-J730F, Android 9) fiziksel cihazda ve Pixel 7 emülatöründe (zorla Doze modu + ekran kilitli + uygulama arka planda) test edildi: zamanlanmış görev hatırlatıcısı 3/3, sabah motivasyon bildirimi de doğrulandı. **Ek düzeltme (Faz 4 sırasında bulundu, 2026-07-09):** `splash_screen.dart`'ta cihazın saat dilimi tespiti başarısız olursa hardcoded `'Europe/Istanbul'`'a düşülüyordu — GMT gibi farklı ofsetli cihazlarda bildirimleri saatlerce kaydırıyordu (sessizce iptal bile edebiliyordu). Artık cihazın gerçek UTC ofsetine göre sabit bölge kullanılıyor.
 - **Faz 3 — Mood Tracker: TAMAMLANDI** — günlük mood kaydı, heatmap'e Başarı/Ruh Hali geçiş anahtarı, üretkenlik-mood korelasyon kartı (bkz. Mevcut Özellikler). Pixel 7 emülatöründe uçtan uca test edildi.
-- **Faz 4 — State Management Geçişi (Provider): DEVAM EDİYOR.** Tamamlanan: TaskStore `ChangeNotifier`'a çevrildi (static→instance), mutasyonlar encapsulate edildi (görev 2), `main.dart` `ChangeNotifierProvider` ile sarmalandı (görev 3), tüm ekranlar (Home→Stats→Calendar→Profile→TaskForm) tek tek `context.watch`'a geçirildi ve `onTaskToggled` callback zinciri kodda hiç kalmayacak şekilde tamamen söküldü — her ekran ayrı commit+push edildi (görev 4, `flutter analyze` 0 hata + emülatör duman testiyle doğrulandı). **Kalan:** görev 5 (`NotificationService`'i ayrı dosyaya taşıma — artık TaskStore instance olduğu için döngüsel bağımlılık sorunu çözülebilir), görev 6 (kapsamlı regresyon testi — bildirim kurma senaryosu bu oturumda test edilmedi), görev 7 (faz kapanışı: CLAUDE.md'nin bu bölümünü "TAMAMLANDI" yapmak + son push). Detay: roadmap.md Faz 4.
-- **Faz 4 → 5 → 7 → 8 zinciri katıdır** (Provider geçişi → Firebase → Premium → Yayın), roadmap.md'de gerekçesiyle yazılı
+- **Faz 4 — State Management Geçişi (Provider): TAMAMLANDI (2026-07-09).** TaskStore `ChangeNotifier`'a çevrildi (static→instance), mutasyonlar (`addTask`/`toggleTask`/`deleteTask`/`clearAllData`) encapsulate edildi, `main.dart` `ChangeNotifierProvider` ile sarmalandı, tüm ekranlar (Home→Stats→Calendar→Profile→TaskForm) tek tek `context.watch`'a geçirildi — `onTaskToggled` callback zinciri kodda hiç kalmayacak şekilde tamamen söküldü (grep ile doğrulandı), her ekran ayrı commit+push edildi. `NotificationService` ayrı dosyaya taşındı, motivasyon mesajları bağımsız sabite çıkarıldı. Regresyon testi: görev ekle/tamamla/sil, streak, tema değişimi, isim/avatar değişimi, görev hatırlatıcısı ve sabah motivasyonu bildirimleri gerçek cihazda doğrulandı. `flutter analyze` boyunca 0 yeni hata.
+- **Faz 4 → 5 → 7 → 8 zinciri katıdır** (Provider geçişi → Firebase → Premium → Yayın), roadmap.md'de gerekçesiyle yazılı. **Sırada: Faz 5 (Firebase: Gerçek Hesap + Bulut Senkronizasyonu).**
 - (Opsiyonel, düşük öncelik / Fikir Havuzu) `TaskStore.getUserLevelInfo()` şu an 5 seviyeli (Acemi Planlayıcı → Uzman), eskiden 9 seviyeli bir versiyon vardı, kullanıcı isterse geri getirilebilir
 
 ## Git / Kaynak Kontrolü
