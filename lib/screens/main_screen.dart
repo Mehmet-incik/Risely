@@ -111,7 +111,7 @@ class _MainScreenState extends State<MainScreen> {
       builder: (context, isDark, _) {
         final screens = [
           HomeScreen(onHelpTapped: () => setState(() => _showTutorial = true)),
-          CalendarScreen(onTaskToggled: _onTaskToggled),
+          const CalendarScreen(),
           const StatsScreen(),
           ProfileScreen(onTaskToggled: _onTaskToggled),
         ];

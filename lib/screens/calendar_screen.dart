@@ -9,8 +9,7 @@ import 'task_form.dart';
 enum CalendarViewMode { weekly, monthly, yearly }
 
 class CalendarScreen extends StatefulWidget {
-  final VoidCallback onTaskToggled;
-  const CalendarScreen({super.key, required this.onTaskToggled});
+  const CalendarScreen({super.key});
 
   DateTime getSelectedDate() => _CalendarScreenState.currentSelectedDate;
 
@@ -28,20 +27,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   TaskStore get taskStore => context.read<TaskStore>();
 
-  void toggleTask(String id) {
-    taskStore.toggleTask(id);
-    setState(() {});
-    widget.onTaskToggled();
-  }
+  void toggleTask(String id) => taskStore.toggleTask(id);
 
-  void deleteTask(Task task) {
-    taskStore.deleteTask(task);
-    setState(() {});
-    widget.onTaskToggled();
-  }
+  void deleteTask(Task task) => taskStore.deleteTask(task);
 
   @override
   Widget build(BuildContext context) {
+    context.watch<TaskStore>();
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,7 +133,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           children: [
                             ...dayTasks.map((t) => _buildMiniTaskCard(t)),
                             GestureDetector(
-                              onTap: () => showTaskForm(context, selectedDate: day, onSaved: widget.onTaskToggled),
+                              onTap: () => showTaskForm(context, selectedDate: day, onSaved: () {}),
                               child: Container(
                                 margin: const EdgeInsets.only(top: 8),
                                 padding: const EdgeInsets.symmetric(vertical: 10),
@@ -183,7 +175,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          showTaskForm(context, task: task, onSaved: widget.onTaskToggled);
+          showTaskForm(context, task: task, onSaved: () {});
           return false;
         }
         return true;
@@ -318,7 +310,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       key: Key(task.id), direction: DismissDirection.horizontal,
       background: Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.only(left: 20), decoration: BoxDecoration(color: Colors.green.withOpacity(0.8), borderRadius: BorderRadius.circular(14)), alignment: Alignment.centerLeft, child: const Icon(Icons.edit_rounded, color: Colors.white, size: 28)),
       secondaryBackground: Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.only(right: 20), decoration: BoxDecoration(color: Colors.red.withOpacity(0.8), borderRadius: BorderRadius.circular(14)), alignment: Alignment.centerRight, child: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 28)),
-      confirmDismiss: (direction) async { if (direction == DismissDirection.startToEnd) { showTaskForm(context, task: task, onSaved: widget.onTaskToggled); return false; } return true; },
+      confirmDismiss: (direction) async { if (direction == DismissDirection.startToEnd) { showTaskForm(context, task: task, onSaved: () {}); return false; } return true; },
       onDismissed: (_) => deleteTask(task),
       child: GestureDetector(
         onTap: () => toggleTask(task.id),
