@@ -1,6 +1,9 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:provider/provider.dart';
 import '../app_colors.dart';
+import '../services/services.dart';
 import 'splash_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -15,16 +18,88 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isLoading = false;
+  String? _errorMessage;
 
-  void _submitForm() {
-    // Burada ileride Firebase işlemleri olacak
-    // Şimdilik başarılı sayıp roketli ekrana atıyoruz
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const SplashScreen()));
+  String _authErrorMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-email':
+        return 'Geçersiz e-posta adresi.';
+      case 'user-disabled':
+        return 'Bu hesap devre dışı bırakılmış.';
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'E-posta veya şifre hatalı.';
+      case 'email-already-in-use':
+        return 'Bu e-posta adresi zaten kullanılıyor.';
+      case 'weak-password':
+        return 'Şifre çok zayıf, en az 6 karakter olmalı.';
+      case 'too-many-requests':
+        return 'Çok fazla deneme yapıldı, lütfen biraz sonra tekrar dene.';
+      case 'network-request-failed':
+        return 'İnternet bağlantını kontrol et.';
+      case 'operation-not-allowed':
+        return 'Bu giriş yöntemi şu anda kullanılamıyor.';
+      default:
+        return 'Bir şeyler ters gitti, lütfen tekrar dene.';
+    }
   }
 
-  void _continueAsGuest() {
-    // Misafir girişi simülasyonu
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const SplashScreen()));
+  Future<void> _submitForm() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final name = _nameController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = 'E-posta ve şifre alanları boş bırakılamaz.');
+      return;
+    }
+    if (!_isLoginMode && name.isEmpty) {
+      setState(() => _errorMessage = 'Lütfen adını gir.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      if (_isLoginMode) {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password);
+      } else {
+        await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: password);
+        if (mounted) {
+          await context.read<TaskStore>().saveUserName(name);
+        }
+      }
+      if (mounted) {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const SplashScreen()));
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() => _errorMessage = _authErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _continueAsGuest() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await FirebaseAuth.instance.signInAnonymously();
+      if (mounted) {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const SplashScreen()));
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() => _errorMessage = _authErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -68,7 +143,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     true: Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), child: Text('Giriş Yap', style: TextStyle(fontSize: 14, fontWeight: _isLoginMode ? FontWeight.bold : FontWeight.normal, color: _isLoginMode ? Colors.white : AppColors.textMuted))),
                     false: Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), child: Text('Kayıt Ol', style: TextStyle(fontSize: 14, fontWeight: !_isLoginMode ? FontWeight.bold : FontWeight.normal, color: !_isLoginMode ? Colors.white : AppColors.textMuted))),
                   },
-                  onValueChanged: (val) { if (val != null) setState(() => _isLoginMode = val); },
+                  onValueChanged: (val) { if (val != null) setState(() { _isLoginMode = val; _errorMessage = null; }); },
                 ),
               ),
               const SizedBox(height: 30),
@@ -92,13 +167,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
               if (_isLoginMode) Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () {}, child: Text('Şifremi Unuttum?', style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontStyle: FontStyle.italic)))),
 
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 16),
+                Text(_errorMessage!, style: TextStyle(fontSize: 13, color: Colors.red.shade400)),
+              ],
+
               const SizedBox(height: 30),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: AppColors.xp, padding: const EdgeInsets.symmetric(vertical: 18), elevation: 5, shadowColor: AppColors.xp.withOpacity(0.4), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                  onPressed: _submitForm,
-                  child: Text(_isLoginMode ? 'Giriş Yap' : 'Kayıt Ol', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1)),
+                  onPressed: _isLoading ? null : _submitForm,
+                  child: _isLoading
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                      : Text(_isLoginMode ? 'Giriş Yap' : 'Kayıt Ol', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 1)),
                 ),
               ),
               const SizedBox(height: 40),
@@ -107,7 +189,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Row(children: [Expanded(child: Divider(color: AppColors.border, thickness: 1)), Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('VEYA', style: TextStyle(fontSize: 11, color: AppColors.textMuted, letterSpacing: 1.5))), Expanded(child: Divider(color: AppColors.border, thickness: 1))]),
               const SizedBox(height: 30),
               TextButton(
-                onPressed: _continueAsGuest,
+                onPressed: _isLoading ? null : _continueAsGuest,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
