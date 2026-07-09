@@ -19,7 +19,7 @@ class StatsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final taskStore = context.read<TaskStore>();
+    final taskStore = context.watch<TaskStore>();
     final tasks = taskStore.allTasks;
     final total = tasks.length;
     final done = tasks.where((t) => t.isDone).length;

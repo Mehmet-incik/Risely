@@ -88,6 +88,7 @@ class _HeatmapCalendarState extends State<HeatmapCalendar> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<TaskStore>();
     final today = DateTime.now();
     final todayOnly = DateTime(today.year, today.month, today.day);
     final currentWeekStart = todayOnly.subtract(Duration(days: todayOnly.weekday - 1));
