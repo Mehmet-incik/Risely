@@ -7,8 +7,7 @@ import '../services/services.dart';
 import '../widgets/samsung_time_picker.dart';
 
 class ProfileScreen extends StatefulWidget {
-  final VoidCallback onTaskToggled;
-  const ProfileScreen({super.key, required this.onTaskToggled});
+  const ProfileScreen({super.key});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -74,8 +73,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final parts = result.split(':');
       await taskStore.saveNotificationTime(result);
       await NotificationService.scheduleMorningMotivation(int.parse(parts[0]), int.parse(parts[1]), taskStore.userName);
-      setState(() {});
-      widget.onTaskToggled();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('🔔 Her sabah $result\'da motivasyon gelecek!'), backgroundColor: AppColors.xp));
     }
   }
@@ -83,8 +80,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _cancelNotifications() async {
     await taskStore.saveNotificationTime(null);
     await NotificationService.cancelAllNotifications();
-    setState(() {});
-    widget.onTaskToggled();
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tüm bildirimler kapatıldı.'), backgroundColor: Colors.red));
     }
@@ -129,8 +124,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onPressed: () async {
                   if (nameCtrl.text.isNotEmpty) {
                     await taskStore.saveUserName(nameCtrl.text);
-                    setState(() {});
-                    widget.onTaskToggled();
                   }
                   Navigator.pop(context);
                 },
@@ -157,7 +150,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: const Text('Evet, Sil'),
             onPressed: () async {
               await taskStore.clearAllData();
-              widget.onTaskToggled();
               if (context.mounted) Navigator.pop(context);
               if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veriler sıfırlandı.'), backgroundColor: AppColors.xp));
             },
@@ -169,6 +161,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    context.watch<TaskStore>();
     final levelInfo = taskStore.getUserLevelInfo();
     final doneTasks = taskStore.allTasks.where((t) => t.isDone).length;
 
@@ -185,10 +178,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 isScrollControlled: true,
                 builder: (context) => AvatarPickerSheet(
                   currentAvatar: taskStore.userAvatar,
-                  onSelected: (a) {
-                    setState(() {});
-                    widget.onTaskToggled();
-                  },
                 ),
               ),
               child: Stack(
@@ -338,8 +327,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
 class AvatarPickerSheet extends StatefulWidget {
   final String currentAvatar;
-  final Function(String) onSelected;
-  const AvatarPickerSheet({super.key, required this.currentAvatar, required this.onSelected});
+  const AvatarPickerSheet({super.key, required this.currentAvatar});
 
   @override
   State<AvatarPickerSheet> createState() => _AvatarPickerSheetState();
@@ -421,7 +409,6 @@ class _AvatarPickerSheetState extends State<AvatarPickerSheet> {
               ),
               onPressed: () async {
                 await taskStore.saveAvatar(selected);
-                widget.onSelected(selected);
                 Navigator.pop(context);
               },
               child: const Text('Seç', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),

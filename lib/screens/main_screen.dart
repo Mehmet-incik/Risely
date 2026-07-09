@@ -113,7 +113,7 @@ class _MainScreenState extends State<MainScreen> {
           HomeScreen(onHelpTapped: () => setState(() => _showTutorial = true)),
           const CalendarScreen(),
           const StatsScreen(),
-          ProfileScreen(onTaskToggled: _onTaskToggled),
+          const ProfileScreen(),
         ];
 
         return Scaffold(
