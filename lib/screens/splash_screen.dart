@@ -5,6 +5,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import '../app_colors.dart';
 import '../services/services.dart';
+import '../services/notification_service.dart';
 import 'main_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -33,7 +34,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       String tzName = timezoneInfo is String ? timezoneInfo : timezoneInfo.name;
       tz.setLocalLocation(tz.getLocation(tzName));
     } catch (e) {
-      tz.setLocalLocation(tz.getLocation('Europe/Istanbul'));
+      // Cihazdan gelen bölge adı tz veritabanında tanınmadıysa (ör. bazı Android
+      // sürümlerinde/emülatörlerde döndürülen kısa "GMT" adı), sabit bir şehre
+      // (ör. Europe/Istanbul) düşmek farklı ofsetli cihazlarda tüm zamanlanmış
+      // bildirimleri saatlerce kaydırır. Bunun yerine cihazın gerçek UTC ofsetine
+      // karşılık gelen sabit bölgeyi kullan.
+      final offsetHours = -DateTime.now().timeZoneOffset.inHours;
+      final sign = offsetHours >= 0 ? '+' : '';
+      try {
+        tz.setLocalLocation(tz.getLocation('Etc/GMT$sign$offsetHours'));
+      } catch (_) {
+        tz.setLocalLocation(tz.UTC);
+      }
     }
 
     await NotificationService.init();
