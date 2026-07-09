@@ -6,22 +6,21 @@ import '../models/task.dart';
 import '../services/services.dart';
 import '../widgets/samsung_time_picker.dart';
 
-void showTaskForm(BuildContext context, {Task? task, DateTime? selectedDate, required VoidCallback onSaved}) {
+void showTaskForm(BuildContext context, {Task? task, DateTime? selectedDate}) {
   showModalBottomSheet(
     context: context,
     backgroundColor: AppColors.surface,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-    builder: (context) => TaskFormSheet(task: task, preSelectedDate: selectedDate, onSaved: onSaved),
+    builder: (context) => TaskFormSheet(task: task, preSelectedDate: selectedDate),
   );
 }
 
 class TaskFormSheet extends StatefulWidget {
   final Task? task;
   final DateTime? preSelectedDate;
-  final VoidCallback onSaved;
 
-  const TaskFormSheet({super.key, this.task, this.preSelectedDate, required this.onSaved});
+  const TaskFormSheet({super.key, this.task, this.preSelectedDate});
 
   @override
   State<TaskFormSheet> createState() => _TaskFormSheetState();
@@ -303,7 +302,6 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
                   }
 
                   taskStore.saveTasks();
-                  widget.onSaved();
                   if (context.mounted) Navigator.pop(context);
                 }
               },

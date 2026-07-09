@@ -301,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          showTaskForm(context, task: task, onSaved: () {});
+          showTaskForm(context, task: task);
           return false;
         }
         return true;

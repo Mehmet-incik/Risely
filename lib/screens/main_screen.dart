@@ -102,8 +102,6 @@ class _MainScreenState extends State<MainScreen> {
     setState(() => _showTutorial = false);
   }
 
-  void _onTaskToggled() => setState(() {});
-
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
@@ -129,7 +127,6 @@ class _MainScreenState extends State<MainScreen> {
             onPressed: () => showTaskForm(
               context,
               selectedDate: (_currentIndex == 1) ? (screens[1] as CalendarScreen).getSelectedDate() : null,
-              onSaved: _onTaskToggled,
             ),
             backgroundColor: AppColors.xp,
             child: const Icon(Icons.add, color: Colors.white, size: 28),
