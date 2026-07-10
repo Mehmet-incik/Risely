@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_colors.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
+import 'screens/main_screen.dart';
 import 'screens/splash_screen.dart';
 import 'services/services.dart';
 
@@ -47,18 +49,48 @@ class RiselyApp extends StatelessWidget {
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
   @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  // ÖNEMLİ: LoginScreen/SplashScreen KENDİ İÇLERİNDE Navigator.pushReplacement
+  // ile bir sonraki ekrana geçmemeli — bu, AuthGate'i içeren route'un YERİNE
+  // geçer ve AuthGate'i (dolayısıyla bu dinleyiciyi) widget ağacından tamamen
+  // düşürür. Bir daha giriş/çıkış olayı hiç yakalanmaz. Bunun yerine ekranlar
+  // arası geçiş SADECE burada, _user/_splashDone state'i üzerinden yönetilir.
+  User? _user;
+  bool _isWaiting = true;
+  bool _splashDone = false;
+  late final StreamSubscription<User?> _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      setState(() {
+        _user = user;
+        _isWaiting = false;
+        _splashDone = false; // her yeni oturumda splash tekrar oynasın
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(backgroundColor: AppColors.bg);
-        }
-        return snapshot.hasData ? const SplashScreen() : const LoginScreen();
-      },
-    );
+    if (_isWaiting) return Scaffold(backgroundColor: AppColors.bg);
+    if (_user == null) return const LoginScreen();
+    if (!_splashDone) {
+      return SplashScreen(onFinished: () => setState(() => _splashDone = true));
+    }
+    return const MainScreen();
   }
 }

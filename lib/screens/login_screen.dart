@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import '../app_colors.dart';
+import '../services/auth_error_messages.dart';
 import '../services/services.dart';
-import 'splash_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,31 +20,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _isLoading = false;
   String? _errorMessage;
-
-  String _authErrorMessage(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'invalid-email':
-        return 'Geçersiz e-posta adresi.';
-      case 'user-disabled':
-        return 'Bu hesap devre dışı bırakılmış.';
-      case 'user-not-found':
-      case 'wrong-password':
-      case 'invalid-credential':
-        return 'E-posta veya şifre hatalı.';
-      case 'email-already-in-use':
-        return 'Bu e-posta adresi zaten kullanılıyor.';
-      case 'weak-password':
-        return 'Şifre çok zayıf, en az 6 karakter olmalı.';
-      case 'too-many-requests':
-        return 'Çok fazla deneme yapıldı, lütfen biraz sonra tekrar dene.';
-      case 'network-request-failed':
-        return 'İnternet bağlantını kontrol et.';
-      case 'operation-not-allowed':
-        return 'Bu giriş yöntemi şu anda kullanılamıyor.';
-      default:
-        return 'Bir şeyler ters gitti, lütfen tekrar dene.';
-    }
-  }
 
   Future<void> _submitForm() async {
     final email = _emailController.text.trim();
@@ -74,11 +49,10 @@ class _LoginScreenState extends State<LoginScreen> {
           await context.read<TaskStore>().saveUserName(name);
         }
       }
-      if (mounted) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const SplashScreen()));
-      }
+      // Navigasyon yapmıyoruz: FirebaseAuth.authStateChanges() otomatik tetiklenir,
+      // AuthGate (main.dart) bunu dinleyip kendisi SplashScreen'e geçer.
     } on FirebaseAuthException catch (e) {
-      setState(() => _errorMessage = _authErrorMessage(e));
+      setState(() => _errorMessage = firebaseAuthErrorMessage(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -92,11 +66,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await FirebaseAuth.instance.signInAnonymously();
-      if (mounted) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const SplashScreen()));
-      }
+      // Navigasyon yapmıyoruz: AuthGate authStateChanges() üzerinden kendisi yönlendirir.
     } on FirebaseAuthException catch (e) {
-      setState(() => _errorMessage = _authErrorMessage(e));
+      setState(() => _errorMessage = firebaseAuthErrorMessage(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

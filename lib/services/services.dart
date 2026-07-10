@@ -85,6 +85,33 @@ class TaskStore extends ChangeNotifier {
     await saveMoods();
   }
 
+  // Çıkış yapmadan ÖNCE çağrılır: bu TaskStore instance'ı uygulama boyunca tek
+  // (main.dart'ta bir kez oluşturuluyor), aynı cihazda ikinci bir hesapla giriş
+  // yapılırsa önceki hesabın yerel önbelleği (SharedPreferences) temizlenmezse
+  // yeni hesabın verisiyle karışır. clearAllData()'dan farkı: burada Firestore'a
+  // hiçbir şey push EDİLMİYOR — çıkan hesabın buluttaki verisi olduğu gibi kalır.
+  Future<void> resetLocalStateOnSignOut() async {
+    allTasks = [];
+    allMoods = [];
+    userName = 'Kullanıcı';
+    userAvatar = '🚀';
+    notificationTime = null;
+    notificationStartDate = null;
+    settingsUpdatedAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+    await NotificationService.cancelAllNotifications();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('saved_tasks');
+    await prefs.remove('saved_moods');
+    await prefs.remove('user_name');
+    await prefs.remove('user_avatar');
+    await prefs.remove('notification_time');
+    await prefs.remove('notification_start_date');
+    await prefs.remove('settings_updated_at');
+    notifyListeners();
+  }
+
   // Son [days] gün (bugün dahil) için yoğunluk kademesini tek geçişte hesaplar;
   // heatmap grid'inde gün başına ayrı ayrı getTasksForDate çağrısı yapmaktan kaçınır.
   Map<DateTime, int> getIntensityMapForLastDays(int days) {

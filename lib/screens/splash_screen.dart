@@ -6,10 +6,10 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import '../app_colors.dart';
 import '../services/services.dart';
 import '../services/notification_service.dart';
-import 'main_screen.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  final VoidCallback onFinished;
+  const SplashScreen({super.key, required this.onFinished});
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
@@ -53,14 +53,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     await Future.delayed(const Duration(seconds: 2));
 
     if (mounted) {
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => const MainScreen(),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-        ),
-      );
+      widget.onFinished();
     }
   }
 

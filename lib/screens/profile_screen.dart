@@ -1,8 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_colors.dart';
+import '../services/auth_error_messages.dart';
 import '../services/services.dart';
 import '../services/notification_service.dart';
 import '../widgets/samsung_time_picker.dart';
@@ -138,6 +140,121 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  User? get _currentUser => FirebaseAuth.instance.currentUser;
+  bool get _isAnonymous => _currentUser?.isAnonymous ?? true;
+
+  void _showUpgradeAccountSheet() {
+    final emailCtrl = TextEditingController();
+    final passwordCtrl = TextEditingController();
+    String? errorMessage;
+    bool isLoading = false;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom, left: 20, right: 20, top: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Hesabını Oluştur', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.text)),
+              const SizedBox(height: 8),
+              Text('Misafir verilerin kaybolmadan gerçek bir hesaba geçer, başka cihazlardan da erişebilirsin.', style: TextStyle(fontSize: 13, color: AppColors.textMuted, height: 1.4)),
+              const SizedBox(height: 20),
+              TextField(
+                controller: emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                style: TextStyle(color: AppColors.text),
+                decoration: InputDecoration(filled: true, fillColor: AppColors.bg, hintText: 'E-posta Adresi', hintStyle: TextStyle(color: AppColors.textMuted), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordCtrl,
+                obscureText: true,
+                style: TextStyle(color: AppColors.text),
+                decoration: InputDecoration(filled: true, fillColor: AppColors.bg, hintText: 'Şifre', hintStyle: TextStyle(color: AppColors.textMuted), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+              ),
+              if (errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Text(errorMessage!, style: TextStyle(fontSize: 13, color: Colors.red.shade400)),
+              ],
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.xp, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          final email = emailCtrl.text.trim();
+                          final password = passwordCtrl.text.trim();
+                          if (email.isEmpty || password.isEmpty) {
+                            setSheetState(() => errorMessage = 'E-posta ve şifre alanları boş bırakılamaz.');
+                            return;
+                          }
+                          setSheetState(() {
+                            isLoading = true;
+                            errorMessage = null;
+                          });
+                          try {
+                            final credential = EmailAuthProvider.credential(email: email, password: password);
+                            await FirebaseAuth.instance.currentUser!.linkWithCredential(credential);
+                            if (sheetContext.mounted) Navigator.pop(sheetContext);
+                            if (mounted) {
+                              setState(() {});
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Hesabın oluşturuldu! Artık başka cihazlardan da giriş yapabilirsin.'), backgroundColor: AppColors.xp));
+                            }
+                          } on FirebaseAuthException catch (e) {
+                            setSheetState(() {
+                              errorMessage = firebaseAuthErrorMessage(e);
+                              isLoading = false;
+                            });
+                          }
+                        },
+                  child: isLoading
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                      : const Text('Hesabı Oluştur', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _confirmSignOut() {
+    final isGuest = _isAnonymous;
+    showCupertinoDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('Çıkış Yap'),
+        content: Text(
+          isGuest
+              ? 'Bu bir misafir hesabı. Hesap oluşturmadan çıkarsan verilerine bir daha erişemezsin. Yine de çıkmak istiyor musun?'
+              : 'Çıkış yapmak istediğine emin misin?',
+        ),
+        actions: [
+          CupertinoDialogAction(child: const Text('İptal', style: TextStyle(color: Colors.blue)), onPressed: () => Navigator.pop(context)),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            child: const Text('Çıkış Yap'),
+            onPressed: () async {
+              Navigator.pop(context);
+              await taskStore.resetLocalStateOnSignOut();
+              await FirebaseAuth.instance.signOut();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showResetDialog() {
     showCupertinoDialog(
       context: context,
@@ -220,6 +337,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text('HESAP', style: TextStyle(fontSize: 11, color: AppColors.textMuted, letterSpacing: 1.5)),
+                  const SizedBox(height: 16),
+                  if (_isAnonymous)
+                    _buildMenuTile(
+                      icon: Icons.cloud_upload_outlined,
+                      iconColor: AppColors.xp,
+                      title: 'Hesabını Oluştur',
+                      trailing: Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+                      onTap: _showUpgradeAccountSheet,
+                    )
+                  else
+                    _buildMenuTile(
+                      icon: Icons.email_outlined,
+                      title: _currentUser?.email ?? 'Hesap',
+                      trailing: const SizedBox.shrink(),
+                      onTap: () {},
+                    ),
+                  _buildMenuTile(
+                    icon: Icons.logout_rounded,
+                    iconColor: Colors.red,
+                    title: 'Çıkış Yap',
+                    titleColor: Colors.red,
+                    trailing: Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+                    onTap: _confirmSignOut,
+                  ),
+                  const SizedBox(height: 24),
                   Text('BİLDİRİMLER', style: TextStyle(fontSize: 11, color: AppColors.textMuted, letterSpacing: 1.5)),
                   const SizedBox(height: 16),
                   _buildMenuTile(
