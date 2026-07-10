@@ -59,3 +59,7 @@ Detaylı, fazlara bölünmüş yol haritası artık **roadmap.md** dosyasında (
 - Kullanıcı Türkçe konuşuyor, Türkçe yanıt ver
 - Yeni başlayan bir geliştirici — teknik terimleri açıklayarak anlat, adım adım ilerle
 - Android Studio kullanıyor (JetBrains/IntelliJ tabanlı), Windows üzerinde çalışıyor
+
+## Test Yaklaşımı
+- **Zamana bağlı testler** (bildirimler, zamanlanmış hatırlatıcılar vb.) **ve gerçek cihaz testlerini Claude Code kendi çalıştırmaz.** Bunun yerine kullanıcıya ön koşul + adımlar + beklenen sonuç içeren manuel bir test listesi hazırlar; kullanıcı kendi ortamında (gerçek cihaz/emülatör) test edip sonucu bildirir.
+- **Hızlı UI duman testleri** (görev ekle/sil, ekran geçişi gibi saniyelik, zamana bağlı olmayan senaryolar) **ve kod içi doğrulamalar** (`flutter analyze`, grep, derleme) Claude Code tarafından emülatörde/kod üzerinde yapılabilir.
