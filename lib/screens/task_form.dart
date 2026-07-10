@@ -292,6 +292,7 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
                     finalTask.date = selectedDate;
                     finalTask.hasReminder = hasReminder;
                     finalTask.reminderOffset = selectedReminderOffset;
+                    finalTask.updatedAt = DateTime.now();
                   }
 
                   if (hasReminder && selectedTime != null) {

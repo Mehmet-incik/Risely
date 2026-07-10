@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task.dart';
 import '../models/mood_entry.dart';
+import 'firestore_sync_service.dart';
 import 'motivation_messages.dart';
 import 'notification_service.dart';
 
@@ -13,6 +15,7 @@ class TaskStore extends ChangeNotifier {
   String userAvatar = '🚀';
   String? notificationTime;
   DateTime? notificationStartDate;
+  DateTime settingsUpdatedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   static const List<String> moodEmojis = ['😞', '😕', '😐', '🙂', '😄'];
   static const List<String> moodLabels = ['kötü', 'fena değil', 'idare eder', 'iyi', 'harika'];
@@ -61,6 +64,7 @@ class TaskStore extends ChangeNotifier {
   Future<void> toggleTask(String id) async {
     final task = allTasks.firstWhere((t) => t.id == id);
     task.isDone = !task.isDone;
+    task.updatedAt = DateTime.now();
     await saveTasks();
   }
 
@@ -138,6 +142,7 @@ class TaskStore extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('saved_moods', jsonEncode(allMoods.map((m) => m.toJson()).toList()));
     notifyListeners();
+    unawaited(FirestoreSyncService.pushMoods(List.of(allMoods)));
   }
 
   // Heatmap için: 0 = kayıt yok, 1-5 = mood skoru (kademe = skorun kendisi).
@@ -224,6 +229,9 @@ class TaskStore extends ChangeNotifier {
     userAvatar = prefs.getString('user_avatar') ?? '🚀';
     notificationTime = prefs.getString('notification_time');
 
+    final settingsUpdatedAtStr = prefs.getString('settings_updated_at');
+    settingsUpdatedAt = settingsUpdatedAtStr != null ? DateTime.parse(settingsUpdatedAtStr) : DateTime.fromMillisecondsSinceEpoch(0);
+
     final startDateStr = prefs.getString('notification_start_date');
     if (startDateStr != null) notificationStartDate = DateTime.parse(startDateStr);
 
@@ -251,12 +259,108 @@ class TaskStore extends ChangeNotifier {
       allMoods = [];
     }
     notifyListeners();
+
+    await _syncFromCloud();
+  }
+
+  // Girişte tek seferlik buluttan çekme + last-write-wins birleştirme (roadmap Faz 5).
+  // Sürekli dinleme (stream) YOK — sadece her uygulama açılışında bir kez çalışır.
+  Future<void> _syncFromCloud() async {
+    final results = await Future.wait([
+      FirestoreSyncService.pullTasks(),
+      FirestoreSyncService.pullMoods(),
+      FirestoreSyncService.pullSettings(),
+    ]);
+    final cloudTasks = results[0] as List<Task>?;
+    final cloudMoods = results[1] as List<MoodEntry>?;
+    final cloudSettings = results[2] as Map<String, dynamic>?;
+
+    bool changed = false;
+
+    if (cloudTasks != null) {
+      final byId = {for (final t in allTasks) t.id: t};
+      for (final cloudTask in cloudTasks) {
+        final localTask = byId[cloudTask.id];
+        if (localTask == null || cloudTask.updatedAt.isAfter(localTask.updatedAt)) {
+          byId[cloudTask.id] = cloudTask;
+          changed = true;
+        }
+      }
+      allTasks = byId.values.toList();
+    }
+
+    if (cloudMoods != null) {
+      final byDate = {for (final m in allMoods) DateTime(m.date.year, m.date.month, m.date.day): m};
+      for (final cloudMood in cloudMoods) {
+        final key = DateTime(cloudMood.date.year, cloudMood.date.month, cloudMood.date.day);
+        final localMood = byDate[key];
+        if (localMood == null || cloudMood.updatedAt.isAfter(localMood.updatedAt)) {
+          byDate[key] = cloudMood;
+          changed = true;
+        }
+      }
+      allMoods = byDate.values.toList();
+    }
+
+    if (cloudSettings != null) {
+      final cloudUpdatedAtStr = cloudSettings['updatedAt'] as String?;
+      final cloudUpdatedAt = cloudUpdatedAtStr != null ? DateTime.parse(cloudUpdatedAtStr) : null;
+      if (cloudUpdatedAt != null && cloudUpdatedAt.isAfter(settingsUpdatedAt)) {
+        userName = cloudSettings['userName'] as String? ?? userName;
+        userAvatar = cloudSettings['userAvatar'] as String? ?? userAvatar;
+        notificationTime = cloudSettings['notificationTime'] as String?;
+        final cloudStartDateStr = cloudSettings['notificationStartDate'] as String?;
+        notificationStartDate = cloudStartDateStr != null ? DateTime.parse(cloudStartDateStr) : null;
+        settingsUpdatedAt = cloudUpdatedAt;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('saved_tasks', jsonEncode(allTasks.map((t) => t.toJson()).toList()));
+      await prefs.setString('saved_moods', jsonEncode(allMoods.map((m) => m.toJson()).toList()));
+      await prefs.setString('user_name', userName);
+      await prefs.setString('user_avatar', userAvatar);
+      if (notificationTime != null) {
+        await prefs.setString('notification_time', notificationTime!);
+      } else {
+        await prefs.remove('notification_time');
+      }
+      if (notificationStartDate != null) {
+        await prefs.setString('notification_start_date', notificationStartDate!.toIso8601String());
+      } else {
+        await prefs.remove('notification_start_date');
+      }
+      await prefs.setString('settings_updated_at', settingsUpdatedAt.toIso8601String());
+      notifyListeners();
+    }
+
+    // Birleşmiş sonucu buluta geri yansıt ki iki taraf da yakınsasın.
+    unawaited(FirestoreSyncService.pushTasks(List.of(allTasks)));
+    unawaited(FirestoreSyncService.pushMoods(List.of(allMoods)));
+  }
+
+  Map<String, dynamic> _settingsJson() => {
+        'userName': userName,
+        'userAvatar': userAvatar,
+        'notificationTime': notificationTime,
+        'notificationStartDate': notificationStartDate?.toIso8601String(),
+        'updatedAt': settingsUpdatedAt.toIso8601String(),
+      };
+
+  Future<void> _persistSettingsUpdatedAt() async {
+    settingsUpdatedAt = DateTime.now();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('settings_updated_at', settingsUpdatedAt.toIso8601String());
+    unawaited(FirestoreSyncService.pushSettings(_settingsJson()));
   }
 
   Future<void> saveTasks() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('saved_tasks', jsonEncode(allTasks.map((t) => t.toJson()).toList()));
     notifyListeners();
+    unawaited(FirestoreSyncService.pushTasks(List.of(allTasks)));
   }
 
   Future<void> saveUserName(String name) async {
@@ -264,6 +368,7 @@ class TaskStore extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_name', name);
     notifyListeners();
+    await _persistSettingsUpdatedAt();
   }
 
   Future<void> saveAvatar(String avatar) async {
@@ -271,6 +376,7 @@ class TaskStore extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user_avatar', avatar);
     notifyListeners();
+    await _persistSettingsUpdatedAt();
   }
 
   Future<void> saveNotificationTime(String? time) async {
@@ -286,5 +392,6 @@ class TaskStore extends ChangeNotifier {
       notificationStartDate = null;
     }
     notifyListeners();
+    await _persistSettingsUpdatedAt();
   }
 }
