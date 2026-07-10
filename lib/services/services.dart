@@ -17,6 +17,15 @@ class TaskStore extends ChangeNotifier {
   DateTime? notificationStartDate;
   DateTime settingsUpdatedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
+  // Kayıt formunda girilen isim: FirebaseAuth.createUserWithEmailAndPassword()
+  // tamamlanır tamamlanmaz authStateChanges tetiklenip AuthGate SplashScreen'e
+  // geçebilir — bu, LoginScreen'in ayrıca çağıracağı saveUserName() ile YARIŞIR
+  // (loadData() bazen daha önce çalışıp ismi varsayılana geri döndürebilir).
+  // Bunun yerine isim createUserWithEmailAndPassword'DAN ÖNCE senkron olarak
+  // buraya yazılır, loadData() de bunu (varsa) yerel prefs'ten okumak yerine
+  // kullanır — iki async işlemin sıralamasına bağımlı olmadan çalışır.
+  String? pendingUserName;
+
   static const List<String> moodEmojis = ['😞', '😕', '😐', '🙂', '😄'];
   static const List<String> moodLabels = ['kötü', 'fena değil', 'idare eder', 'iyi', 'harika'];
 
@@ -252,7 +261,13 @@ class TaskStore extends ChangeNotifier {
 
   Future<void> loadData() async {
     final prefs = await SharedPreferences.getInstance();
-    userName = prefs.getString('user_name') ?? 'Kullanıcı';
+    if (pendingUserName != null) {
+      userName = pendingUserName!;
+      await prefs.setString('user_name', userName);
+      pendingUserName = null;
+    } else {
+      userName = prefs.getString('user_name') ?? 'Kullanıcı';
+    }
     userAvatar = prefs.getString('user_avatar') ?? '🚀';
     notificationTime = prefs.getString('notification_time');
 

@@ -44,10 +44,12 @@ class _LoginScreenState extends State<LoginScreen> {
       if (_isLoginMode) {
         await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password);
       } else {
+        // createUserWithEmailAndPassword tamamlanır tamamlanmaz authStateChanges
+        // tetiklenip SplashScreen'in loadData()'sı hemen çalışabilir — bu yüzden
+        // isim, saveUserName() ile SONRADAN değil, ÖNCEDEN (senkron) TaskStore'a
+        // yazılıyor; loadData() bunu bulup kullanıyor (bkz. TaskStore.pendingUserName).
+        context.read<TaskStore>().pendingUserName = name;
         await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email, password: password);
-        if (mounted) {
-          await context.read<TaskStore>().saveUserName(name);
-        }
       }
       // Navigasyon yapmıyoruz: FirebaseAuth.authStateChanges() otomatik tetiklenir,
       // AuthGate (main.dart) bunu dinleyip kendisi SplashScreen'e geçer.

@@ -144,6 +144,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool get _isAnonymous => _currentUser?.isAnonymous ?? true;
 
   void _showUpgradeAccountSheet() {
+    final nameCtrl = TextEditingController(text: taskStore.userName);
     final emailCtrl = TextEditingController();
     final passwordCtrl = TextEditingController();
     String? errorMessage;
@@ -165,6 +166,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 8),
               Text('Misafir verilerin kaybolmadan gerçek bir hesaba geçer, başka cihazlardan da erişebilirsin.', style: TextStyle(fontSize: 13, color: AppColors.textMuted, height: 1.4)),
               const SizedBox(height: 20),
+              TextField(
+                controller: nameCtrl,
+                style: TextStyle(color: AppColors.text),
+                decoration: InputDecoration(filled: true, fillColor: AppColors.bg, hintText: 'Tam Adın', hintStyle: TextStyle(color: AppColors.textMuted), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: emailCtrl,
                 keyboardType: TextInputType.emailAddress,
@@ -190,10 +197,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: isLoading
                       ? null
                       : () async {
+                          final name = nameCtrl.text.trim();
                           final email = emailCtrl.text.trim();
                           final password = passwordCtrl.text.trim();
                           if (email.isEmpty || password.isEmpty) {
                             setSheetState(() => errorMessage = 'E-posta ve şifre alanları boş bırakılamaz.');
+                            return;
+                          }
+                          if (name.isEmpty) {
+                            setSheetState(() => errorMessage = 'Lütfen adını gir.');
                             return;
                           }
                           setSheetState(() {
@@ -203,6 +215,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           try {
                             final credential = EmailAuthProvider.credential(email: email, password: password);
                             await FirebaseAuth.instance.currentUser!.linkWithCredential(credential);
+                            if (mounted) await taskStore.saveUserName(name);
                             if (sheetContext.mounted) Navigator.pop(sheetContext);
                             if (mounted) {
                               setState(() {});
