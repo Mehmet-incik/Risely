@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../app_colors.dart';
 import '../models/task.dart';
 import '../services/services.dart';
+import '../widgets/multi_day_select_sheet.dart';
+import '../widgets/recurrence_scope_dialog.dart';
 import 'task_form.dart';
 
 enum CalendarViewMode { weekly, monthly, yearly }
@@ -30,6 +32,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void toggleTask(String id) => taskStore.toggleTask(id);
 
   void deleteTask(Task task) => taskStore.deleteTask(task);
+
+  Future<void> _openMultiDaySelect() async {
+    final dates = await showMultiDaySelectSheet(context, initialMonth: currentSelectedDate);
+    if (dates != null && dates.isNotEmpty && context.mounted) {
+      showTaskForm(context, bulkDates: dates);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -156,6 +165,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildMiniTaskCard(Task task) {
+    RecurrenceScope? pendingScope;
     return Dismissible(
       key: Key(task.id),
       direction: DismissDirection.horizontal,
@@ -178,9 +188,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
           showTaskForm(context, task: task);
           return false;
         }
+        if (task.recurrenceGroupId == null) return true;
+        final scope = await showRecurrenceScopeDialog(context, actionLabel: 'Silme');
+        if (scope == null) return false;
+        pendingScope = scope;
         return true;
       },
-      onDismissed: (_) => deleteTask(task),
+      onDismissed: (_) {
+        switch (pendingScope) {
+          case RecurrenceScope.series:
+            taskStore.deleteTaskSeries(task.recurrenceGroupId!);
+            break;
+          case RecurrenceScope.remaining:
+            taskStore.deleteTaskSeriesFrom(task.recurrenceGroupId!, task.date);
+            break;
+          case RecurrenceScope.occurrence:
+          case null:
+            deleteTask(task);
+            break;
+        }
+      },
       child: GestureDetector(
         onTap: () => toggleTask(task.id),
         child: Container(
@@ -234,6 +261,26 @@ class _CalendarScreenState extends State<CalendarScreen> {
             firstDate: DateTime(2020),
             lastDate: DateTime(2030),
             onDateChanged: (date) => setState(() => currentSelectedDate = date),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: GestureDetector(
+            onTap: _openMultiDaySelect,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(color: AppColors.xp.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.xp.withOpacity(0.4))),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.event_repeat_rounded, color: AppColors.xp, size: 18),
+                  const SizedBox(width: 8),
+                  Text('Çoklu Gün Seç ve Toplu Görev Ekle', style: TextStyle(color: AppColors.xp, fontSize: 13, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -306,12 +353,33 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildStandardTaskCard(Task task) {
+    RecurrenceScope? pendingScope;
     return Dismissible(
       key: Key(task.id), direction: DismissDirection.horizontal,
       background: Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.only(left: 20), decoration: BoxDecoration(color: Colors.green.withOpacity(0.8), borderRadius: BorderRadius.circular(14)), alignment: Alignment.centerLeft, child: const Icon(Icons.edit_rounded, color: Colors.white, size: 28)),
       secondaryBackground: Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.only(right: 20), decoration: BoxDecoration(color: Colors.red.withOpacity(0.8), borderRadius: BorderRadius.circular(14)), alignment: Alignment.centerRight, child: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 28)),
-      confirmDismiss: (direction) async { if (direction == DismissDirection.startToEnd) { showTaskForm(context, task: task); return false; } return true; },
-      onDismissed: (_) => deleteTask(task),
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.startToEnd) { showTaskForm(context, task: task); return false; }
+        if (task.recurrenceGroupId == null) return true;
+        final scope = await showRecurrenceScopeDialog(context, actionLabel: 'Silme');
+        if (scope == null) return false;
+        pendingScope = scope;
+        return true;
+      },
+      onDismissed: (_) {
+        switch (pendingScope) {
+          case RecurrenceScope.series:
+            taskStore.deleteTaskSeries(task.recurrenceGroupId!);
+            break;
+          case RecurrenceScope.remaining:
+            taskStore.deleteTaskSeriesFrom(task.recurrenceGroupId!, task.date);
+            break;
+          case RecurrenceScope.occurrence:
+          case null:
+            deleteTask(task);
+            break;
+        }
+      },
       child: GestureDetector(
         onTap: () => toggleTask(task.id),
         child: Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12), decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)), child: Row(children: [

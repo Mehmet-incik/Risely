@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../app_colors.dart';
 import '../models/task.dart';
 import '../services/services.dart';
+import '../widgets/recurrence_scope_dialog.dart';
 import 'task_form.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -282,6 +283,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTaskCard(Task task) {
+    RecurrenceScope? pendingScope;
     return Dismissible(
       key: Key(task.id),
       direction: DismissDirection.horizontal,
@@ -304,9 +306,26 @@ class _HomeScreenState extends State<HomeScreen> {
           showTaskForm(context, task: task);
           return false;
         }
+        if (task.recurrenceGroupId == null) return true;
+        final scope = await showRecurrenceScopeDialog(context, actionLabel: 'Silme');
+        if (scope == null) return false;
+        pendingScope = scope;
         return true;
       },
-      onDismissed: (_) => deleteTask(task),
+      onDismissed: (_) {
+        switch (pendingScope) {
+          case RecurrenceScope.series:
+            taskStore.deleteTaskSeries(task.recurrenceGroupId!);
+            break;
+          case RecurrenceScope.remaining:
+            taskStore.deleteTaskSeriesFrom(task.recurrenceGroupId!, task.date);
+            break;
+          case RecurrenceScope.occurrence:
+          case null:
+            deleteTask(task);
+            break;
+        }
+      },
       child: GestureDetector(
         onTap: () => toggleTask(task.id),
         child: AnimatedOpacity(

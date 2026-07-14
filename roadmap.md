@@ -42,11 +42,12 @@ Login/Splash akışı · Ana ekran (görev listesi, XP/başarı skoru) · Takvim
 | 3 | Mood Tracker | 1-2 hafta | Faz 1 önerilir (heatmap altyapısını yeniden kullanır) |
 | 4 | State Management Geçişi (Provider) | 2-3 hafta | Faz 5'ten önce ZORUNLU |
 | 5 | Firebase: Gerçek Hesap + Bulut Senkronizasyonu | 3 hafta | Faz 4 bitmeden BAŞLAMA |
-| 6 | Focus/Timer Modu | 2 hafta | Faz 4 sonrası önerilir |
-| 7 | Premium Altyapısı (IAP) + Özellik Kapıları | 2-3 hafta | Faz 5 bitmeden BAŞLAMA |
+| 6A | Tekrarlayan Görevler | 1-2 hafta | Faz 5 bitmeden BAŞLAMA |
+| 6 | Focus/Timer Modu | 2 hafta | Faz 4 sonrası önerilir; zincirin dışında, 6A ile aynı sırada zorunlu değil |
+| 7 | Premium Altyapısı (IAP) + Özellik Kapıları | 2-3 hafta | Faz 5 VE Faz 6A bitmeden BAŞLAMA |
 | 8 | Cila + Widget + Play Store Yayını | 2-3 hafta | Faz 7 sonrası |
 
-> Haftada 5-10 saatle toplam kabaca **4-6 ay**. Fazlar 1-2-3 sırası esnektir (birbirinden bağımsız); **4 → 5 → 7 → 8 zinciri ise katıdır, sırası değiştirilemez.**
+> Haftada 5-10 saatle toplam kabaca **4-6 ay** (+1-2 hafta, Faz 6A eklendi). Fazlar 1-2-3 sırası esnektir (birbirinden bağımsız); **4 → 5 → 6A → 7 → 8 zinciri ise katıdır, sırası değiştirilemez.** Faz 6 (Timer) bu zincirin dışında, esnek/opsiyonel — 6A'dan sonra istenen noktada araya girebilir.
 
 ---
 
@@ -158,6 +159,40 @@ Login/Splash akışı · Ana ekran (görev listesi, XP/başarı skoru) · Takvim
 
 ---
 
+## FAZ 6A — TEKRARLAYAN GÖREVLER (1-2 hafta)
+
+**Amaç:** Her gün aynı görevi elle eklemek zorunda kalmak, bir alışkanlık takip uygulamasının en can sıkıcı sürtünme noktası. Focus/Timer'dan (Faz 6) önce ele alınıyor çünkü günlük kullanım değeri daha yüksek: bu olmadan uygulama "alışkanlık takibi" değil "günlük görev listesi" gibi kullanılmaya devam eder.
+
+**Ön koşul: Faz 5 bitmiş olmalı.** Tekrar kuralı ve/veya üretilen görevler Firestore şemasına dokunacak; local-first senkronizasyon deseninin üzerine kurulur.
+
+**Kapsam:**
+
+| Katman | İçerik |
+|---|---|
+| ÜCRETSİZ | Sınırsız tekrarlayan görev · Basit tekrar kuralları (her gün / hafta içi / haftanın seçili günleri) · Aylık takvimden çoklu gün seçip tek seferde toplu görev ekleme |
+| PREMIUM (kapı Faz 7'de konur) | Gelişmiş tekrar kuralları (ayın 1'i, 2 haftada bir, ayın son iş günü vb.) · Görev setleri/şablonları (ör. "Sabah Rutini" — çoklu görevi tek dokunuşla ekleme) |
+
+Premium tek katman kalır — ikinci bir katman (Premium1/Premium2) eklenmez.
+
+**Görevler (sırayla):**
+1. **Teknik tasarım kararı (kod YAZMADAN önce, ayrı bir konuşmada netleştirilecek):** Tekrar bilgisi `Task` modeline mi eklenecek yoksa ayrı bir `RecurrenceRule` modeli mi olacak; her tekrar için ayrı `Task` kaydı mı önceden üretilecek yoksa tek kural saklanıp görevler ekranda anlık mı türetilecek; her iki yaklaşımın Firestore okuma/yazma maliyetine (`FirestoreSyncService.pushTasks` tüm koleksiyonu her yazmada yeniden yazıyor) ve streak/skor hesaplamasına (`currentStreak`, `longestStreak`, `getScoreForDate`) etkisi; mevcut (tekrarsız) görevlerle geriye dönük uyumluluk.
+2. Seçilen modele göre `models/task.dart` güncellenir veya yeni bir model eklenir.
+3. Görev formuna (`screens/task_form.dart`) tekrar kuralı seçici eklenir: her gün / hafta içi / haftanın seçili günleri.
+4. Takvim ekranına (`screens/calendar_screen.dart`) çoklu gün seçim modu + toplu görev ekleme akışı eklenir.
+5. `TaskStore` mutasyonları (`addTask`/`toggleTask`/`deleteTask`) tekrarlayan görevleri destekleyecek şekilde güncellenir; "sadece bu günü sil/değiştir" ile "tüm seriyi sil/değiştir" ayrımı arayüzde netleştirilir.
+6. Streak/heatmap/skor hesaplamalarının tekrarlayan görevlerle birlikte doğru çalıştığı regresyon testiyle doğrulanır.
+7. Emülatörde duman testi: tekrarlayan görev oluştur, birkaç günü tamamla/atla, streak'in doğru hesaplandığını ve takvimde doğru günlerde göründüğünü doğrula.
+8. Commit + push: `feat: tekrarlayan gorevler eklendi`
+
+**"Bitti" tanımı:** Kullanıcı bir görevi "her gün" veya "hafta içi" gibi bir kuralla bir kez tanımlayabiliyor ve görev otomatik olarak ilgili günlerde beliriyor; takvimden çoklu gün seçip toplu görev eklenebiliyor; streak ve heatmap bundan etkilenmeden doğru çalışıyor; mevcut (tekrarsız) görevler hiçbir değişiklik olmadan çalışmaya devam ediyor.
+
+**Riskler & B planı:**
+- *Risk:* Veri modeli kararı yanlış seçilirse (özellikle "önceden tüm günler için kayıt üret" yaklaşımı) ileride Firestore maliyeti ve tamamlama durumu takibi karmaşıklaşabilir. → *B planı:* Kod yazmadan önce yaklaşım kullanıcıyla birlikte kararlaştırılır (bkz. Görev 1); `FirestoreSyncService.pushTasks`'ın TÜM koleksiyonu her yerel yazmada yeniden yazdığı (batch.set + stale silme) göz önünde bulundurulur.
+- *Risk (güncellendi, 2026-07-14):* "Sadece bu günü düzenle/sil" vs "tüm seriyi düzenle/sil" ayrımı arayüzde kafa karıştırabilir (Google Calendar'da bile klasik bir UX sorunu). İlk sürümde sadece bu iki uç seçenek vardı; gerçek kullanıcı testinde "görev erken bitti, kalan günleri iptal etmek istiyorum ama geçmiş günleri (tamamlanmış olanları) silmek istemiyorum" senaryosu ortaya çıktı. → *Çözüm:* Silme VE düzenleme için ortak 4 seçenekli kapsam eklendi — **Vazgeç / Sadece Bu Gün / Bu Gün ve Sonrası / Tüm Seri** (`widgets/recurrence_scope_dialog.dart`, `RecurrenceScope` enum). "Bu Gün ve Sonrası" seçilince: (a) o günden itibaren occurrence'lar silinir/düzenlenir, (b) SİLME'de ayrıca kalan (geçmiş) occurrence'ların `recurrenceRule`'ü `null`'a çekilerek seri "bitti" işaretlenir — bu adım atlanırsa `_topUpRecurringWindow` seriyi hâlâ aktif sanıp bir sonraki açılışta silinen günleri sessizce yeniden üretir (kritik regresyon riski, bu yüzden manuel test listesine "sildikten sonra uygulamayı kapat/aç" senaryosu eklendi).
+- *Risk:* Faz 7 (Premium) artık Faz 6A'nın da bitmiş olmasını gerektiriyor (gelişmiş tekrar kuralları ve şablonlar premium'da kapılanacağı için). → *B planı:* Faz 7'nin ön koşulu buna göre güncellendi (bkz. Faz 7, Faz 1. tablo), zincir 4 → 5 → 6A → 7 → 8 olarak revize edildi.
+
+---
+
 ## FAZ 6 — FOCUS/TIMER MODU (2 hafta)
 
 **Amaç:** Pomodoro tarzı odaklanma sayacı. Temel sürüm herkese; gelişmiş istatistikler premium'a (Faz 7).
@@ -179,7 +214,7 @@ Login/Splash akışı · Ana ekran (görev listesi, XP/başarı skoru) · Takvim
 
 ## FAZ 7 — PREMIUM ALTYAPISI + ÖZELLİK KAPILARI (2-3 hafta)
 
-**Amaç:** Google Play In-App Purchase (abonelik) entegrasyonu ve premium özelliklerin kapılanması. **Ön koşul: Faz 5 bitmiş olmalı** (bulut senkronizasyonu ana premium vaadi olduğundan, satacak şeyin önce var olması gerekir).
+**Amaç:** Google Play In-App Purchase (abonelik) entegrasyonu ve premium özelliklerin kapılanması. **Ön koşul: Faz 5 VE Faz 6A bitmiş olmalı** (bulut senkronizasyonu ve tekrarlayan görevler ana premium vaatlerinden ikisi olduğundan, kapılanacak özelliklerin önce var olması gerekir).
 
 **Görevler (sırayla):**
 1. Google Play Console hesabı aç (tek seferlik ~25$ ücret) ve uygulamayı **internal testing** kanalına yükle — IAP test etmek için uygulamanın konsolda tanımlı olması ŞARTTIR, bu yüzden bu adım en başta.
@@ -207,6 +242,7 @@ Login/Splash akışı · Ana ekran (görev listesi, XP/başarı skoru) · Takvim
 **Görevler (sırayla):**
 1. Ana ekran widget'ı (premium): bugünün görev sayısı + streak gösteren basit Android widget (`home_widget` paketi). Widget teknik olarak ayrı bir dünya — basit tut, tek boyut yeter.
 2. Teknik temizlik: `withOpacity` deprecated uyarılarını topluca `withValues()` ile değiştir; `flutter analyze` sıfır uyarıya yaklaşsın.
+2a. **Firestore kısmi senkronizasyon (Faz 6A'da flag'lendi):** `FirestoreSyncService.pushTasks`/`pullTasks` şu an her yerel yazmada/girişte `tasks` koleksiyonunun TAMAMINI okuyup yeniden yazıyor (satır bazlı diff yok). Bu, elle görev eklemekle zaten zamanla büyüyecek bir sınırdı; Faz 6A'daki tekrarlayan görevler (otomatik, kayan pencereyle üretilen kayıtlar) bu sınıra çok daha hızı ulaşılmasına neden oluyor. Bu maddede: `pushTasks`'ı "sadece değişen görevi yaz" şekline getir (tüm listeyi değil, değişen/silinen id'leri hedefleyen kısmi batch), `pullTasks`'ı gerekirse "son N ay + tamamlanmamışlar" gibi kapsamlı bir aralığa sınırla. Ölçüt: gerçek kullanım verisiyle (kaç tekrarlayan görev, kaç gündür kullanılıyor) Firestore okuma/yazma sayısını ölç, günlük limitlerin (Spark plan) çok altında kaldığını doğrula ya da kısmi senkronizasyonu uygula.
 3. Görsel cila: boş durum ekranları, yükleme durumları, hata mesajları; uygulama ikonu son hali; splash ekranı süresi.
 4. Onboarding gözden geçirme: TutorialOverlay'i yeni özellikleri (heatmap, mood, timer) kapsayacak şekilde güncelle.
 5. Mağaza varlıkları: ekran görüntüleri (en az 4), kısa/uzun açıklama (Türkçe + İngilizce), gizlilik politikası sayfası (Firebase kullandığın için ZORUNLU — ücretsiz üreteçlerle hazırlanıp GitHub Pages'te barındırılabilir).
@@ -239,7 +275,8 @@ Login/Splash akışı · Ana ekran (görev listesi, XP/başarı skoru) · Takvim
 | Bildirimler (görev + sabah motivasyonu) | ✔ | + Çoklu/akıllı hatırlatıcılar |
 | Focus timer (temel + haftalık toplam) | ✔ | + Seans geçmişi, detaylı döküm, özel döngüler |
 | Bulut senkronizasyonu & çoklu cihaz | — | ✔ (ana satış vaadi) |
-| Özel kategori oluşturma, tekrarlayan görev şablonları | — | ✔ |
+| Tekrarlayan görevler (her gün/hafta içi/seçili günler + takvimden toplu ekleme) | ✔ Sınırsız | + Gelişmiş tekrar kuralları (ayın 1'i, 2 haftada bir, ayın son iş günü vb.) + görev setleri/şablonları |
+| Özel kategori oluşturma | — | ✔ |
 | Ek tema/avatar paketleri | — | ✔ |
 | Ana ekran widget'ı | — | ✔ |
 
@@ -282,7 +319,7 @@ Login/Splash akışı · Ana ekran (görev listesi, XP/başarı skoru) · Takvim
 Bu dosyayı okuyan model (Claude Code, Sonnet vb.) şu kurallara uyar:
 
 1. **Konum tespiti:** Önce kullanıcıya hangi fazda olunduğunu sor ya da CLAUDE.md / git log'dan çıkar. Emin değilsen SOR, varsayma.
-2. **Sıra bağlayıcıdır:** 4 → 5 → 7 → 8 zinciri değiştirilemez. Kullanıcı sıra dışı bir istek getirirse (örn. Faz 4 bitmeden Firebase), bu dosyadaki gerekçeyi hatırlat ve onay iste — kullanıcı bilinçli olarak ısrar ederse uygula, ama riski açıkça söyle.
+2. **Sıra bağlayıcıdır:** 4 → 5 → 6A → 7 → 8 zinciri değiştirilemez. Faz 6 (Timer) zincirin dışındadır, esnektir. Kullanıcı sıra dışı bir istek getirirse (örn. Faz 4 bitmeden Firebase), bu dosyadaki gerekçeyi hatırlat ve onay iste — kullanıcı bilinçli olarak ısrar ederse uygula, ama riski açıkça söyle.
 3. **Faz içi görev sırası** önerilen sıradır; teknik zorunluluk yoksa küçük sapmalar serbesttir.
 4. **"Bitti" tanımı karşılanmadan** faz kapanmış sayılmaz; kapanışta commit + push + CLAUDE.md güncellemesi yapılır/yaptırılır.
 5. **Kapsamı koru:** Fazda yazmayan bir özellik istenirse önce "Fikir Havuzu"na eklemeyi öner; kullanıcı şimdi istiyorsa mevcut faza etkisini (süre/risk) belirtip onayla ilerle.
@@ -292,4 +329,4 @@ Bu dosyayı okuyan model (Claude Code, Sonnet vb.) şu kurallara uyar:
 
 ---
 
-*Bu roadmap, projenin o günkü durumuna ve hedeflerine göre Claude (Fable 5) ile hazırlanmıştır. Son güncelleme: 6 Temmuz 2026.*
+*Bu roadmap, projenin o günkü durumuna ve hedeflerine göre Claude (Fable 5) ile hazırlanmıştır. Son güncelleme: 14 Temmuz 2026 (Faz 6A — Tekrarlayan Görevler eklendi).*

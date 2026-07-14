@@ -29,6 +29,10 @@ class TaskStore extends ChangeNotifier {
   static const List<String> moodEmojis = ['😞', '😕', '😐', '🙂', '😄'];
   static const List<String> moodLabels = ['kötü', 'fena değil', 'idare eder', 'iyi', 'harika'];
 
+  // Rule bazlı tekrarlayan seriler bu kadar gün ileriye kadar somut Task kaydı olarak
+  // üretilir (kayan pencere) — "her gün" gibi sınırsız bir kural, sonsuz kayıt üretmesin diye.
+  static const int recurrenceWindowDays = 60;
+
   static String getTodayLabel() {
     final now = DateTime.now();
     final days = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
@@ -85,6 +89,205 @@ class TaskStore extends ChangeNotifier {
 
   void addTask(Task task) {
     allTasks.add(task);
+  }
+
+  bool _ruleMatchesDate(String rule, DateTime date) {
+    final weekday = date.weekday; // 1=Pzt .. 7=Paz
+    if (rule == 'daily') return true;
+    if (rule == 'weekdays') return weekday >= 1 && weekday <= 5;
+    if (rule.startsWith('weekly:')) {
+      final days = rule.substring(7).split(',').where((s) => s.isNotEmpty).map(int.parse).toSet();
+      return days.contains(weekday);
+    }
+    return false;
+  }
+
+  List<DateTime> _datesForRule(DateTime start, String rule, int windowDays) {
+    final startDay = DateTime(start.year, start.month, start.day);
+    final dates = <DateTime>[];
+    for (int i = 0; i < windowDays; i++) {
+      final d = startDay.add(Duration(days: i));
+      if (_ruleMatchesDate(rule, d)) dates.add(d);
+    }
+    return dates;
+  }
+
+  List<Task> _createSeries({
+    required String title, String? time, required String category, required bool isFixed,
+    required List<DateTime> dates, String? recurrenceRule, bool hasReminder = false, int reminderOffset = 0,
+  }) {
+    if (dates.isEmpty) return [];
+    final groupId = '${recurrenceRule != null ? 'rec' : 'bulk'}_${DateTime.now().microsecondsSinceEpoch}';
+    int notifSeed = DateTime.now().millisecondsSinceEpoch.remainder(1000000);
+    final created = <Task>[];
+    for (final d in dates) {
+      final nid = notifSeed++;
+      final task = Task(
+        id: '${DateTime.now().microsecondsSinceEpoch}_$nid',
+        notificationId: nid,
+        title: title, time: time, category: category, isFixed: isFixed,
+        date: DateTime(d.year, d.month, d.day),
+        hasReminder: hasReminder, reminderOffset: reminderOffset,
+        recurrenceRule: recurrenceRule, recurrenceGroupId: groupId,
+      );
+      allTasks.add(task);
+      created.add(task);
+    }
+    return created;
+  }
+
+  // Görev formunda "Her gün / Hafta içi / Seçili günler" seçilince çağrılır — seçilen kuralı
+  // başlangıç tarihinden itibaren recurrenceWindowDays kadar somut Task kaydına çevirir.
+  // Bildirim planlaması ve saveTasks() çağrısı (tek görev ekleme akışıyla tutarlı olsun diye)
+  // çağıran tarafta (task_form.dart) yapılır.
+  List<Task> addRecurringTaskSeries({
+    required String title, String? time, required String category, required bool isFixed,
+    required DateTime startDate, required String recurrenceRule, bool hasReminder = false, int reminderOffset = 0,
+  }) {
+    final dates = _datesForRule(startDate, recurrenceRule, recurrenceWindowDays);
+    return _createSeries(title: title, time: time, category: category, isFixed: isFixed, dates: dates, recurrenceRule: recurrenceRule, hasReminder: hasReminder, reminderOffset: reminderOffset);
+  }
+
+  // Takvimden çoklu gün seçilip toplu eklendiğinde çağrılır. recurrenceRule YOK — seçilen
+  // günler sabit bir liste, kayan pencereyle otomatik genişletilmez.
+  List<Task> addBulkTaskSeries({
+    required String title, String? time, required String category, required bool isFixed,
+    required List<DateTime> dates, bool hasReminder = false, int reminderOffset = 0,
+  }) {
+    return _createSeries(title: title, time: time, category: category, isFixed: isFixed, dates: dates, recurrenceRule: null, hasReminder: hasReminder, reminderOffset: reminderOffset);
+  }
+
+  // "Tüm seriyi sil": aynı recurrenceGroupId'ye sahip TÜM görevler (geçmiş dahil) silinir.
+  // "Sadece bu günü sil" için mevcut deleteTask(task) kullanılır, bu metoda gerek yoktur.
+  Future<void> deleteTaskSeries(String groupId) async {
+    final toDelete = allTasks.where((t) => t.recurrenceGroupId == groupId).toList();
+    for (final t in toDelete) {
+      if (t.hasReminder) NotificationService.cancelTaskReminder(t.notificationId);
+    }
+    allTasks.removeWhere((t) => t.recurrenceGroupId == groupId);
+    await saveTasks();
+  }
+
+  // "Bu gün ve sonrasını sil": fromDate dahil sonraki tüm occurrence'lar silinir, öncekiler
+  // (geçmiş) dokunulmadan kalır. KRİTİK: kalan (geçmiş) occurrence'ların recurrenceRule'ü
+  // temizlenir — aksi halde _topUpRecurringWindow bu seriyi hâlâ "aktif" sanıp bir sonraki
+  // açılışta sildiğimiz günleri sessizce yeniden üretir (bkz. roadmap.md Faz 6A).
+  Future<void> deleteTaskSeriesFrom(String groupId, DateTime fromDate) async {
+    final from = DateTime(fromDate.year, fromDate.month, fromDate.day);
+    final groupTasks = allTasks.where((t) => t.recurrenceGroupId == groupId).toList();
+
+    final toDelete = groupTasks.where((t) => !DateTime(t.date.year, t.date.month, t.date.day).isBefore(from)).toList();
+    for (final t in toDelete) {
+      if (t.hasReminder) NotificationService.cancelTaskReminder(t.notificationId);
+    }
+    allTasks.removeWhere((t) => toDelete.contains(t));
+
+    for (final t in groupTasks) {
+      if (DateTime(t.date.year, t.date.month, t.date.day).isBefore(from)) {
+        t.recurrenceRule = null;
+      }
+    }
+    await saveTasks();
+  }
+
+  // "Tüm seriyi düzenle": başlık/saat/kategori/hatırlatıcı tüm occurrence'lara uygulanır;
+  // her occurrence'ın kendi tarihi ve tamamlanma durumu (isDone) DOKUNULMADAN kalır.
+  // v1'de tekrar kuralının kendisi (recurrenceRule) buradan değiştirilemez — kalıbı değiştirmek
+  // isteyen kullanıcı seriyi silip yeniden oluşturur (bkz. roadmap.md Faz 6A riskleri).
+  Future<void> editTaskSeries(String groupId, {
+    required String title, String? time, required String category, required bool isFixed,
+    required bool hasReminder, required int reminderOffset,
+  }) async {
+    final tasks = allTasks.where((t) => t.recurrenceGroupId == groupId).toList();
+    await _applyEditToTasks(tasks, title: title, time: time, category: category, isFixed: isFixed, hasReminder: hasReminder, reminderOffset: reminderOffset);
+  }
+
+  // "Bu gün ve sonrasını düzenle": fromDate dahil sonraki occurrence'lara uygulanır, geçmiş
+  // occurrence'lar dokunulmadan kalır. recurrenceRule değişmez, seri top-up ile genişlemeye
+  // devam eder (bu, silmeden farklı olarak seriyi "bitirmez").
+  Future<void> editTaskSeriesFrom(String groupId, DateTime fromDate, {
+    required String title, String? time, required String category, required bool isFixed,
+    required bool hasReminder, required int reminderOffset,
+  }) async {
+    final from = DateTime(fromDate.year, fromDate.month, fromDate.day);
+    final tasks = allTasks.where((t) => t.recurrenceGroupId == groupId && !DateTime(t.date.year, t.date.month, t.date.day).isBefore(from)).toList();
+    await _applyEditToTasks(tasks, title: title, time: time, category: category, isFixed: isFixed, hasReminder: hasReminder, reminderOffset: reminderOffset);
+  }
+
+  Future<void> _applyEditToTasks(List<Task> tasks, {
+    required String title, String? time, required String category, required bool isFixed,
+    required bool hasReminder, required int reminderOffset,
+  }) async {
+    for (final t in tasks) {
+      t.title = title;
+      t.time = time;
+      t.category = category;
+      t.isFixed = isFixed;
+      t.hasReminder = hasReminder;
+      t.reminderOffset = reminderOffset;
+      t.updatedAt = DateTime.now();
+
+      if (hasReminder && time != null) {
+        final parts = time.split(':');
+        final scheduleDateTime = DateTime(t.date.year, t.date.month, t.date.day, int.parse(parts[0]), int.parse(parts[1]));
+        await NotificationService.scheduleTaskReminder(t.notificationId, title, scheduleDateTime, reminderOffset);
+      } else {
+        await NotificationService.cancelTaskReminder(t.notificationId);
+      }
+    }
+    await saveTasks();
+  }
+
+  // Uygulama her açıldığında (loadData) çağrılır: rule bazlı her aktif seri için, en son
+  // üretilmiş günden bugün+recurrenceWindowDays-1'e kadar eksik kalan günleri tamamlar.
+  // Uygulama günlerce açılmasa bile pencere bir sonraki açılışta kendini toparlar.
+  Future<void> _topUpRecurringWindow() async {
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final windowEnd = todayOnly.add(Duration(days: recurrenceWindowDays - 1));
+
+    final Map<String, List<Task>> groups = {};
+    for (final t in allTasks) {
+      if (t.recurrenceGroupId != null && t.recurrenceRule != null) {
+        groups.putIfAbsent(t.recurrenceGroupId!, () => []).add(t);
+      }
+    }
+
+    bool addedAny = false;
+    int notifSeed = DateTime.now().millisecondsSinceEpoch.remainder(1000000);
+
+    for (final entry in groups.entries) {
+      final groupTasks = entry.value;
+      final template = groupTasks.last;
+      final rule = template.recurrenceRule!;
+      DateTime lastDate = groupTasks.map((t) => DateTime(t.date.year, t.date.month, t.date.day)).reduce((a, b) => a.isAfter(b) ? a : b);
+      if (!lastDate.isBefore(windowEnd)) continue;
+
+      DateTime cursor = lastDate.add(const Duration(days: 1));
+      while (!cursor.isAfter(windowEnd)) {
+        if (_ruleMatchesDate(rule, cursor)) {
+          final nid = notifSeed++;
+          final newTask = Task(
+            id: '${DateTime.now().microsecondsSinceEpoch}_$nid',
+            notificationId: nid,
+            title: template.title, time: template.time, category: template.category, isFixed: template.isFixed,
+            date: cursor,
+            hasReminder: template.hasReminder, reminderOffset: template.reminderOffset,
+            recurrenceRule: rule, recurrenceGroupId: entry.key,
+          );
+          allTasks.add(newTask);
+          addedAny = true;
+          if (newTask.hasReminder && newTask.time != null) {
+            final parts = newTask.time!.split(':');
+            final scheduleDateTime = DateTime(cursor.year, cursor.month, cursor.day, int.parse(parts[0]), int.parse(parts[1]));
+            await NotificationService.scheduleTaskReminder(newTask.notificationId, newTask.title, scheduleDateTime, newTask.reminderOffset);
+          }
+        }
+        cursor = cursor.add(const Duration(days: 1));
+      }
+    }
+
+    if (addedAny) await saveTasks();
   }
 
   Future<void> clearAllData() async {
@@ -303,6 +506,7 @@ class TaskStore extends ChangeNotifier {
     notifyListeners();
 
     await _syncFromCloud();
+    await _topUpRecurringWindow();
   }
 
   // Girişte tek seferlik buluttan çekme + last-write-wins birleştirme (roadmap Faz 5).
