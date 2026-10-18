@@ -3,11 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/task.dart';
 import '../models/mood_entry.dart';
+import '../models/focus_session.dart';
 
-// Local-first senkronizasyon: SharedPreferences her zaman birincil kaynak kalır,
-// bu servis sadece arka planda Firestore'a yansıtma/oradan çekme işini yapar.
-// Push'lar fire-and-forget çağrılır (TaskStore'un yerel kaydını asla bloklamaz),
-// pull ise girişte (loadData) tek seferlik çağrılır — sürekli dinleme (stream) yok.
 class FirestoreSyncService {
   static String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
@@ -23,13 +20,18 @@ class FirestoreSyncService {
     return FirebaseFirestore.instance.collection('users').doc(uid).collection('moods');
   }
 
+  static CollectionReference<Map<String, dynamic>>? get _focusCol {
+    final uid = _uid;
+    if (uid == null) return null;
+    return FirebaseFirestore.instance.collection('users').doc(uid).collection('focus_sessions');
+  }
+
   static DocumentReference<Map<String, dynamic>>? get _settingsDoc {
     final uid = _uid;
     if (uid == null) return null;
     return FirebaseFirestore.instance.collection('users').doc(uid).collection('settings').doc('profile');
   }
 
-  // Yerel görev listesini Firestore'a olduğu gibi yansıtır (silinenler dahil).
   static Future<void> pushTasks(List<Task> tasks) async {
     final col = _tasksCol;
     if (col == null) return;
@@ -47,7 +49,7 @@ class FirestoreSyncService {
       }
       await batch.commit();
     } catch (e) {
-      debugPrint('FirestoreSyncService.pushTasks başarısız (çevrimdışı olabilir): $e');
+      debugPrint('FirestoreSyncService.pushTasks başarısız: $e');
     }
   }
 
@@ -68,7 +70,28 @@ class FirestoreSyncService {
       }
       await batch.commit();
     } catch (e) {
-      debugPrint('FirestoreSyncService.pushMoods başarısız (çevrimdışı olabilir): $e');
+      debugPrint('FirestoreSyncService.pushMoods başarısız: $e');
+    }
+  }
+
+  static Future<void> pushFocusSessions(List<FocusSession> sessions) async {
+    final col = _focusCol;
+    if (col == null) return;
+    try {
+      final cloudSnapshot = await col.get();
+      final cloudIds = cloudSnapshot.docs.map((d) => d.id).toSet();
+      final localIds = sessions.map((s) => s.id).toSet();
+
+      final batch = FirebaseFirestore.instance.batch();
+      for (final s in sessions) {
+        batch.set(col.doc(s.id), s.toJson());
+      }
+      for (final staleId in cloudIds.difference(localIds)) {
+        batch.delete(col.doc(staleId));
+      }
+      await batch.commit();
+    } catch (e) {
+      debugPrint('FirestoreSyncService.pushFocusSessions başarısız: $e');
     }
   }
 
@@ -78,12 +101,10 @@ class FirestoreSyncService {
     try {
       await doc.set(settings);
     } catch (e) {
-      debugPrint('FirestoreSyncService.pushSettings başarısız (çevrimdışı olabilir): $e');
+      debugPrint('FirestoreSyncService.pushSettings başarısız: $e');
     }
   }
 
-  // Buluttaki görevleri tek seferlik çeker. Hata/çevrimdışı durumunda null döner
-  // (TaskStore bu durumda yerel veriyle devam eder).
   static Future<List<Task>?> pullTasks() async {
     final col = _tasksCol;
     if (col == null) return null;
@@ -91,7 +112,7 @@ class FirestoreSyncService {
       final snapshot = await col.get();
       return snapshot.docs.map((d) => Task.fromJson(d.data())).toList();
     } catch (e) {
-      debugPrint('FirestoreSyncService.pullTasks başarısız (çevrimdışı olabilir): $e');
+      debugPrint('FirestoreSyncService.pullTasks başarısız: $e');
       return null;
     }
   }
@@ -103,7 +124,19 @@ class FirestoreSyncService {
       final snapshot = await col.get();
       return snapshot.docs.map((d) => MoodEntry.fromJson(d.data())).toList();
     } catch (e) {
-      debugPrint('FirestoreSyncService.pullMoods başarısız (çevrimdışı olabilir): $e');
+      debugPrint('FirestoreSyncService.pullMoods başarısız: $e');
+      return null;
+    }
+  }
+
+  static Future<List<FocusSession>?> pullFocusSessions() async {
+    final col = _focusCol;
+    if (col == null) return null;
+    try {
+      final snapshot = await col.get();
+      return snapshot.docs.map((d) => FocusSession.fromJson(d.data())).toList();
+    } catch (e) {
+      debugPrint('FirestoreSyncService.pullFocusSessions başarısız: $e');
       return null;
     }
   }
@@ -115,7 +148,7 @@ class FirestoreSyncService {
       final snapshot = await doc.get();
       return snapshot.data();
     } catch (e) {
-      debugPrint('FirestoreSyncService.pullSettings başarısız (çevrimdışı olabilir): $e');
+      debugPrint('FirestoreSyncService.pullSettings başarısız: $e');
       return null;
     }
   }

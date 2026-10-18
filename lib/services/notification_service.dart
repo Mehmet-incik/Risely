@@ -5,6 +5,7 @@ import 'motivation_messages.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
+  static const int _focusTimerNotificationId = 888888;
 
   static Future<void> init() async {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -48,8 +49,41 @@ class NotificationService {
     await _notifications.cancel(notificationId);
   }
 
+  static Future<void> scheduleFocusTimerFinished(DateTime endTime, {String? taskTitle}) async {
+    final local = tz.local;
+    final tzEndTime = tz.TZDateTime.from(endTime, local);
+    if (tzEndTime.isBefore(tz.TZDateTime.now(local))) return;
+
+    final body = taskTitle != null && taskTitle.isNotEmpty
+        ? '"$taskTitle" odaklanma seansını başarıyla tamamladın! +25 XP 🔥'
+        : 'Odaklanma seansını başarıyla tamamladın! Harika iş çıkardın. +25 XP 🔥';
+
+    await _notifications.zonedSchedule(
+      _focusTimerNotificationId,
+      '⏱️ Odaklanma Süresi Doldu!',
+      body,
+      tzEndTime,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'focus_timer', 'Odaklanma Sayacı',
+          channelDescription: 'Pomodoro odaklanma sayacı bitiş bildirimleri',
+          importance: Importance.max, priority: Priority.high,
+          styleInformation: BigTextStyleInformation(''),
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  }
+
+  static Future<void> cancelFocusTimerNotification() async {
+    await _notifications.cancel(_focusTimerNotificationId);
+  }
+
   static Future<void> scheduleMorningMotivation(int hour, int minute, String userName) async {
-    for(int i=0; i<60; i++) { await _notifications.cancel(i); }
+    for (int i = 0; i < 60; i++) {
+      await _notifications.cancel(i);
+    }
 
     final local = tz.local;
     final now = tz.TZDateTime.now(local);
@@ -76,22 +110,10 @@ class NotificationService {
     }
   }
 
-  static Future<void> testInstantNotification() async {
-    final msg = motivationMessages[0];
-    await _notifications.show(
-      999,
-      "${msg['icon']} Bu bir Test Bildirimidir!",
-      "Eğer bunu görüyorsan, bildirim altyapın kusursuz çalışıyor demektir! 🚀",
-      const NotificationDetails(android: AndroidNotificationDetails('morning_motivation', 'Sabah Motivasyonu', importance: Importance.max, priority: Priority.high)),
-    );
-  }
-
   static Future<void> cancelAllNotifications() async {
     await _notifications.cancelAll();
   }
 
-  // Üreticilerin (özellikle Samsung) agresif pil optimizasyonu, uygulama arka plandayken/ekran
-  // kilitliyken zamanlanmış bildirimleri sessizce engelleyebiliyor. Bu, uygulamayı muaf tutar.
   static Future<bool> isBatteryOptimizationDisabled() async {
     final status = await Permission.ignoreBatteryOptimizations.status;
     return status.isGranted;

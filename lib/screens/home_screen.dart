@@ -4,6 +4,7 @@ import '../app_colors.dart';
 import '../models/task.dart';
 import '../services/services.dart';
 import '../widgets/recurrence_scope_dialog.dart';
+import 'focus_timer_screen.dart';
 import 'task_form.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -20,7 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   TaskStore get taskStore => context.read<TaskStore>();
 
   List<Task> get tasks => taskStore.getTasksForDate(DateTime.now());
-  List<Task> get fixedTasks => tasks.where((t) => t.isFixed).toList()..sort((a,b) => (a.time ?? '25:00').compareTo(b.time ?? '25:00'));
+  List<Task> get fixedTasks => tasks.where((t) => t.isFixed).toList()..sort((a, b) => (a.time ?? '25:00').compareTo(b.time ?? '25:00'));
   List<Task> get flexTasks => tasks.where((t) => !t.isFixed).toList();
   int get doneTasks => tasks.where((t) => t.isDone).length;
   int get percentage => tasks.isEmpty ? 0 : ((doneTasks / tasks.length) * 100).round();
@@ -28,6 +29,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void toggleTask(String id) => taskStore.toggleTask(id);
 
   void deleteTask(Task task) => taskStore.deleteTask(task);
+
+  void _openFocusTimer({Task? task}) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => FocusTimerScreen(task: task)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildHeader(),
             _buildMotivationCard(),
             _buildScoreCard(levelInfo),
+            _buildFocusQuickCard(),
             _buildMoodCard(),
             if (fixedTasks.isNotEmpty) ...[
               _buildSectionLabel('SABİT ETKİNLİKLER'),
@@ -78,15 +84,24 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(TaskStore.getTodayLabel(), style: TextStyle(fontSize: 12, color: AppColors.textMuted, letterSpacing: 1.5)),
-              const SizedBox(height: 4),
-              Text('Günaydın, ${taskStore.userName} 👋', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.text)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(TaskStore.getTodayLabel(), style: TextStyle(fontSize: 12, color: AppColors.textMuted, letterSpacing: 1.5)),
+                const SizedBox(height: 4),
+                Text(
+                  'Günaydın, ${taskStore.userName} 👋',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.text),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
+          const SizedBox(width: 12),
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               GestureDetector(
                 onTap: widget.onHelpTapped,
@@ -109,6 +124,42 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildFocusQuickCard() {
+    return GestureDetector(
+      onTap: () => _openFocusTimer(),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.xp.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: AppColors.xp.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.timer_outlined, color: AppColors.xp, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Odaklanma Sayacı (Pomodoro)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.text)),
+                  const SizedBox(height: 2),
+                  Text('Bu hafta ${taskStore.weeklyFocusMinutes} dk odaklandın • Başlatmak için dokun', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                ],
+              ),
+            ),
+            const Icon(Icons.play_circle_fill_rounded, color: AppColors.xp, size: 28),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildMotivationCard() {
     final msg = taskStore.getDailyMotivation();
     return Container(
@@ -122,7 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: AppColors.xp.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(color: AppColors.xp.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
                 child: const Icon(Icons.auto_awesome_rounded, color: AppColors.xp, size: 16),
               ),
               const SizedBox(width: 10),
@@ -187,13 +238,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: LinearProgressIndicator(value: percentage / 100, backgroundColor: AppColors.surfaceAlt, valueColor: const AlwaysStoppedAnimation(AppColors.xp), minHeight: 8),
                     ),
                     const SizedBox(height: 8),
-                    Row(
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
                       children: [
                         _buildStreakBadge(),
-                        const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(color: AppColors.xp.withOpacity(0.15), borderRadius: BorderRadius.circular(99)),
+                          decoration: BoxDecoration(color: AppColors.xp.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(99)),
                           child: Text('Seviye ${levelInfo['level']}', style: const TextStyle(fontSize: 11, color: AppColors.xp, fontWeight: FontWeight.w600)),
                         ),
                       ],
@@ -227,7 +279,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(99)),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(99)),
       child: Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
     );
   }
@@ -290,14 +342,14 @@ class _HomeScreenState extends State<HomeScreen> {
       background: Container(
         margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
         padding: const EdgeInsets.only(left: 20),
-        decoration: BoxDecoration(color: Colors.green.withOpacity(0.8), borderRadius: BorderRadius.circular(14)),
+        decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(14)),
         alignment: Alignment.centerLeft,
         child: const Icon(Icons.edit_rounded, color: Colors.white, size: 28),
       ),
       secondaryBackground: Container(
         margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
         padding: const EdgeInsets.only(right: 20),
-        decoration: BoxDecoration(color: Colors.red.withOpacity(0.8), borderRadius: BorderRadius.circular(14)),
+        decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(14)),
         alignment: Alignment.centerRight,
         child: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 28),
       ),
@@ -337,13 +389,13 @@ class _HomeScreenState extends State<HomeScreen> {
             decoration: BoxDecoration(
               color: AppColors.surface,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: task.isDone ? task.categoryColor.withOpacity(0.4) : AppColors.border),
+              border: Border.all(color: task.isDone ? task.categoryColor.withValues(alpha: 0.4) : AppColors.border),
             ),
             child: Row(
               children: [
                 Container(
                   width: 4, height: 38,
-                  decoration: BoxDecoration(color: task.categoryColor.withOpacity(task.isFixed ? 1.0 : 0.6), borderRadius: BorderRadius.circular(99)),
+                  decoration: BoxDecoration(color: task.categoryColor.withValues(alpha: task.isFixed ? 1.0 : 0.6), borderRadius: BorderRadius.circular(99)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -367,6 +419,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
+                if (!task.isDone)
+                  GestureDetector(
+                    onTap: () => _openFocusTimer(task: task),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      margin: const EdgeInsets.only(right: 10),
+                      decoration: BoxDecoration(color: AppColors.xp.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                      child: const Icon(Icons.timer_outlined, size: 16, color: AppColors.xp),
+                    ),
+                  ),
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   width: 22, height: 22,

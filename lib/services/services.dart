@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/task.dart';
 import '../models/mood_entry.dart';
+import '../models/focus_session.dart';
 import 'firestore_sync_service.dart';
 import 'motivation_messages.dart';
 import 'notification_service.dart';
@@ -11,26 +12,18 @@ import 'notification_service.dart';
 class TaskStore extends ChangeNotifier {
   List<Task> allTasks = [];
   List<MoodEntry> allMoods = [];
+  List<FocusSession> allFocusSessions = [];
   String userName = 'Kullanıcı';
   String userAvatar = '🚀';
   String? notificationTime;
   DateTime? notificationStartDate;
   DateTime settingsUpdatedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  // Kayıt formunda girilen isim: FirebaseAuth.createUserWithEmailAndPassword()
-  // tamamlanır tamamlanmaz authStateChanges tetiklenip AuthGate SplashScreen'e
-  // geçebilir — bu, LoginScreen'in ayrıca çağıracağı saveUserName() ile YARIŞIR
-  // (loadData() bazen daha önce çalışıp ismi varsayılana geri döndürebilir).
-  // Bunun yerine isim createUserWithEmailAndPassword'DAN ÖNCE senkron olarak
-  // buraya yazılır, loadData() de bunu (varsa) yerel prefs'ten okumak yerine
-  // kullanır — iki async işlemin sıralamasına bağımlı olmadan çalışır.
   String? pendingUserName;
 
   static const List<String> moodEmojis = ['😞', '😕', '😐', '🙂', '😄'];
   static const List<String> moodLabels = ['kötü', 'fena değil', 'idare eder', 'iyi', 'harika'];
 
-  // Rule bazlı tekrarlayan seriler bu kadar gün ileriye kadar somut Task kaydı olarak
-  // üretilir (kayan pencere) — "her gün" gibi sınırsız bir kural, sonsuz kayıt üretmesin diye.
   static const int recurrenceWindowDays = 60;
 
   static String getTodayLabel() {
@@ -40,7 +33,7 @@ class TaskStore extends ChangeNotifier {
     return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]}';
   }
 
-  int get totalXp => allTasks.where((t) => t.isDone).length * 15;
+  int get totalXp => (allTasks.where((t) => t.isDone).length * 15) + (allFocusSessions.length * 25);
 
   Map<String, dynamic> getUserLevelInfo() {
     int xp = totalXp;
@@ -61,7 +54,6 @@ class TaskStore extends ChangeNotifier {
     return ((tasks.where((t) => t.isDone).length / tasks.length) * 100).round();
   }
 
-  // 0: o gün görev yok, 1-4: skor arttıkça artan yoğunluk kademesi (heatmap için).
   int getIntensityLevel(DateTime date) {
     final tasks = getTasksForDate(date);
     if (tasks.isEmpty) return 0;
@@ -72,8 +64,6 @@ class TaskStore extends ChangeNotifier {
     return 4;
   }
 
-  // Görev toggle/silme/ekleme, ekranlar arasında dağınık haldeydi (Faz 4 görev 2 öncesi);
-  // Provider'a geçişte tek yerden yönetilmesi ve notifyListeners() ile bağlanması için buraya taşındı.
   Future<void> toggleTask(String id) async {
     final task = allTasks.firstWhere((t) => t.id == id);
     task.isDone = !task.isDone;
@@ -91,8 +81,52 @@ class TaskStore extends ChangeNotifier {
     allTasks.add(task);
   }
 
+  // --- FOCUS SESSION (FAZ 6) ---
+  Future<void> addFocusSession({required int durationMinutes, String? taskId, String? taskTitle}) async {
+    final session = FocusSession(
+      id: 'focus_${DateTime.now().microsecondsSinceEpoch}',
+      date: DateTime.now(),
+      durationMinutes: durationMinutes,
+      taskId: taskId,
+      taskTitle: taskTitle,
+    );
+    allFocusSessions.add(session);
+    await saveFocusSessions();
+  }
+
+  Future<void> saveFocusSessions() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('saved_focus_sessions', jsonEncode(allFocusSessions.map((s) => s.toJson()).toList()));
+    notifyListeners();
+    unawaited(FirestoreSyncService.pushFocusSessions(List.of(allFocusSessions)));
+  }
+
+  int get weeklyFocusMinutes {
+    final now = DateTime.now();
+    final todayOnly = DateTime(now.year, now.month, now.day);
+    final startOfWeek = todayOnly.subtract(Duration(days: todayOnly.weekday - 1));
+    int total = 0;
+    for (final s in allFocusSessions) {
+      final d = DateTime(s.date.year, s.date.month, s.date.day);
+      if (!d.isBefore(startOfWeek) && !d.isAfter(todayOnly)) {
+        total += s.durationMinutes;
+      }
+    }
+    return total;
+  }
+
+  int get weeklyFocusSessionCount {
+    final now = DateTime.now();
+    final todayOnly = DateTime(now.year, now.month, now.day);
+    final startOfWeek = todayOnly.subtract(Duration(days: todayOnly.weekday - 1));
+    return allFocusSessions.where((s) {
+      final d = DateTime(s.date.year, s.date.month, s.date.day);
+      return !d.isBefore(startOfWeek) && !d.isAfter(todayOnly);
+    }).length;
+  }
+
   bool _ruleMatchesDate(String rule, DateTime date) {
-    final weekday = date.weekday; // 1=Pzt .. 7=Paz
+    final weekday = date.weekday;
     if (rule == 'daily') return true;
     if (rule == 'weekdays') return weekday >= 1 && weekday <= 5;
     if (rule.startsWith('weekly:')) {
@@ -136,10 +170,6 @@ class TaskStore extends ChangeNotifier {
     return created;
   }
 
-  // Görev formunda "Her gün / Hafta içi / Seçili günler" seçilince çağrılır — seçilen kuralı
-  // başlangıç tarihinden itibaren recurrenceWindowDays kadar somut Task kaydına çevirir.
-  // Bildirim planlaması ve saveTasks() çağrısı (tek görev ekleme akışıyla tutarlı olsun diye)
-  // çağıran tarafta (task_form.dart) yapılır.
   List<Task> addRecurringTaskSeries({
     required String title, String? time, required String category, required bool isFixed,
     required DateTime startDate, required String recurrenceRule, bool hasReminder = false, int reminderOffset = 0,
@@ -148,8 +178,6 @@ class TaskStore extends ChangeNotifier {
     return _createSeries(title: title, time: time, category: category, isFixed: isFixed, dates: dates, recurrenceRule: recurrenceRule, hasReminder: hasReminder, reminderOffset: reminderOffset);
   }
 
-  // Takvimden çoklu gün seçilip toplu eklendiğinde çağrılır. recurrenceRule YOK — seçilen
-  // günler sabit bir liste, kayan pencereyle otomatik genişletilmez.
   List<Task> addBulkTaskSeries({
     required String title, String? time, required String category, required bool isFixed,
     required List<DateTime> dates, bool hasReminder = false, int reminderOffset = 0,
@@ -157,8 +185,6 @@ class TaskStore extends ChangeNotifier {
     return _createSeries(title: title, time: time, category: category, isFixed: isFixed, dates: dates, recurrenceRule: null, hasReminder: hasReminder, reminderOffset: reminderOffset);
   }
 
-  // "Tüm seriyi sil": aynı recurrenceGroupId'ye sahip TÜM görevler (geçmiş dahil) silinir.
-  // "Sadece bu günü sil" için mevcut deleteTask(task) kullanılır, bu metoda gerek yoktur.
   Future<void> deleteTaskSeries(String groupId) async {
     final toDelete = allTasks.where((t) => t.recurrenceGroupId == groupId).toList();
     for (final t in toDelete) {
@@ -168,10 +194,6 @@ class TaskStore extends ChangeNotifier {
     await saveTasks();
   }
 
-  // "Bu gün ve sonrasını sil": fromDate dahil sonraki tüm occurrence'lar silinir, öncekiler
-  // (geçmiş) dokunulmadan kalır. KRİTİK: kalan (geçmiş) occurrence'ların recurrenceRule'ü
-  // temizlenir — aksi halde _topUpRecurringWindow bu seriyi hâlâ "aktif" sanıp bir sonraki
-  // açılışta sildiğimiz günleri sessizce yeniden üretir (bkz. roadmap.md Faz 6A).
   Future<void> deleteTaskSeriesFrom(String groupId, DateTime fromDate) async {
     final from = DateTime(fromDate.year, fromDate.month, fromDate.day);
     final groupTasks = allTasks.where((t) => t.recurrenceGroupId == groupId).toList();
@@ -190,10 +212,6 @@ class TaskStore extends ChangeNotifier {
     await saveTasks();
   }
 
-  // "Tüm seriyi düzenle": başlık/saat/kategori/hatırlatıcı tüm occurrence'lara uygulanır;
-  // her occurrence'ın kendi tarihi ve tamamlanma durumu (isDone) DOKUNULMADAN kalır.
-  // v1'de tekrar kuralının kendisi (recurrenceRule) buradan değiştirilemez — kalıbı değiştirmek
-  // isteyen kullanıcı seriyi silip yeniden oluşturur (bkz. roadmap.md Faz 6A riskleri).
   Future<void> editTaskSeries(String groupId, {
     required String title, String? time, required String category, required bool isFixed,
     required bool hasReminder, required int reminderOffset,
@@ -202,9 +220,6 @@ class TaskStore extends ChangeNotifier {
     await _applyEditToTasks(tasks, title: title, time: time, category: category, isFixed: isFixed, hasReminder: hasReminder, reminderOffset: reminderOffset);
   }
 
-  // "Bu gün ve sonrasını düzenle": fromDate dahil sonraki occurrence'lara uygulanır, geçmiş
-  // occurrence'lar dokunulmadan kalır. recurrenceRule değişmez, seri top-up ile genişlemeye
-  // devam eder (bu, silmeden farklı olarak seriyi "bitirmez").
   Future<void> editTaskSeriesFrom(String groupId, DateTime fromDate, {
     required String title, String? time, required String category, required bool isFixed,
     required bool hasReminder, required int reminderOffset,
@@ -238,9 +253,6 @@ class TaskStore extends ChangeNotifier {
     await saveTasks();
   }
 
-  // Uygulama her açıldığında (loadData) çağrılır: rule bazlı her aktif seri için, en son
-  // üretilmiş günden bugün+recurrenceWindowDays-1'e kadar eksik kalan günleri tamamlar.
-  // Uygulama günlerce açılmasa bile pencere bir sonraki açılışta kendini toparlar.
   Future<void> _topUpRecurringWindow() async {
     final today = DateTime.now();
     final todayOnly = DateTime(today.year, today.month, today.day);
@@ -295,16 +307,14 @@ class TaskStore extends ChangeNotifier {
     await saveTasks();
     allMoods.clear();
     await saveMoods();
+    allFocusSessions.clear();
+    await saveFocusSessions();
   }
 
-  // Çıkış yapmadan ÖNCE çağrılır: bu TaskStore instance'ı uygulama boyunca tek
-  // (main.dart'ta bir kez oluşturuluyor), aynı cihazda ikinci bir hesapla giriş
-  // yapılırsa önceki hesabın yerel önbelleği (SharedPreferences) temizlenmezse
-  // yeni hesabın verisiyle karışır. clearAllData()'dan farkı: burada Firestore'a
-  // hiçbir şey push EDİLMİYOR — çıkan hesabın buluttaki verisi olduğu gibi kalır.
   Future<void> resetLocalStateOnSignOut() async {
     allTasks = [];
     allMoods = [];
+    allFocusSessions = [];
     userName = 'Kullanıcı';
     userAvatar = '🚀';
     notificationTime = null;
@@ -316,6 +326,7 @@ class TaskStore extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('saved_tasks');
     await prefs.remove('saved_moods');
+    await prefs.remove('saved_focus_sessions');
     await prefs.remove('user_name');
     await prefs.remove('user_avatar');
     await prefs.remove('notification_time');
@@ -324,8 +335,6 @@ class TaskStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Son [days] gün (bugün dahil) için yoğunluk kademesini tek geçişte hesaplar;
-  // heatmap grid'inde gün başına ayrı ayrı getTasksForDate çağrısı yapmaktan kaçınır.
   Map<DateTime, int> getIntensityMapForLastDays(int days) {
     final today = DateTime.now();
     final todayOnly = DateTime(today.year, today.month, today.day);
@@ -369,7 +378,6 @@ class TaskStore extends ChangeNotifier {
     return null;
   }
 
-  // Aynı güne ait kayıt varsa üzerine yazar (günde 1 mood kaydı kuralı).
   Future<void> saveMood(DateTime date, int score, {String? note}) async {
     final target = DateTime(date.year, date.month, date.day);
     allMoods.removeWhere((m) => DateTime(m.date.year, m.date.month, m.date.day) == target);
@@ -384,7 +392,6 @@ class TaskStore extends ChangeNotifier {
     unawaited(FirestoreSyncService.pushMoods(List.of(allMoods)));
   }
 
-  // Heatmap için: 0 = kayıt yok, 1-5 = mood skoru (kademe = skorun kendisi).
   Map<DateTime, int> getMoodIntensityMapForLastDays(int days) {
     final today = DateTime.now();
     final todayOnly = DateTime(today.year, today.month, today.day);
@@ -398,7 +405,6 @@ class TaskStore extends ChangeNotifier {
     return result;
   }
 
-  // "En üretken günlerindeki (başarı skoru %75+) ortalama ruh halin" içgörüsü için emoji döndürür.
   String? getProductiveMoodEmoji() {
     final productiveScores = <int>[];
     for (final mood in allMoods) {
@@ -413,7 +419,6 @@ class TaskStore extends ChangeNotifier {
     return allTasks.where((t) => t.isDone).map((t) => DateTime(t.date.year, t.date.month, t.date.day)).toSet();
   }
 
-  // Bugün henüz görev bitirilmemişse dünden geriye sayar (seri "risk altında" gösterilir ama kırılmış sayılmaz).
   int get currentStreak {
     final completed = _completedDates;
     final now = DateTime.now();
@@ -503,23 +508,36 @@ class TaskStore extends ChangeNotifier {
     } else {
       allMoods = [];
     }
+
+    final String? focusJson = prefs.getString('saved_focus_sessions');
+    if (focusJson != null) {
+      try {
+        final List<dynamic> decoded = jsonDecode(focusJson);
+        allFocusSessions = decoded.map((item) => FocusSession.fromJson(item)).toList();
+      } catch (e) {
+        allFocusSessions = [];
+      }
+    } else {
+      allFocusSessions = [];
+    }
+
     notifyListeners();
 
     await _syncFromCloud();
     await _topUpRecurringWindow();
   }
 
-  // Girişte tek seferlik buluttan çekme + last-write-wins birleştirme (roadmap Faz 5).
-  // Sürekli dinleme (stream) YOK — sadece her uygulama açılışında bir kez çalışır.
   Future<void> _syncFromCloud() async {
     final results = await Future.wait([
       FirestoreSyncService.pullTasks(),
       FirestoreSyncService.pullMoods(),
       FirestoreSyncService.pullSettings(),
+      FirestoreSyncService.pullFocusSessions(),
     ]);
     final cloudTasks = results[0] as List<Task>?;
     final cloudMoods = results[1] as List<MoodEntry>?;
     final cloudSettings = results[2] as Map<String, dynamic>?;
+    final cloudFocus = results[3] as List<FocusSession>?;
 
     bool changed = false;
 
@@ -548,6 +566,18 @@ class TaskStore extends ChangeNotifier {
       allMoods = byDate.values.toList();
     }
 
+    if (cloudFocus != null) {
+      final byId = {for (final s in allFocusSessions) s.id: s};
+      for (final cloudSession in cloudFocus) {
+        final localSession = byId[cloudSession.id];
+        if (localSession == null || cloudSession.updatedAt.isAfter(localSession.updatedAt)) {
+          byId[cloudSession.id] = cloudSession;
+          changed = true;
+        }
+      }
+      allFocusSessions = byId.values.toList();
+    }
+
     if (cloudSettings != null) {
       final cloudUpdatedAtStr = cloudSettings['updatedAt'] as String?;
       final cloudUpdatedAt = cloudUpdatedAtStr != null ? DateTime.parse(cloudUpdatedAtStr) : null;
@@ -566,6 +596,7 @@ class TaskStore extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('saved_tasks', jsonEncode(allTasks.map((t) => t.toJson()).toList()));
       await prefs.setString('saved_moods', jsonEncode(allMoods.map((m) => m.toJson()).toList()));
+      await prefs.setString('saved_focus_sessions', jsonEncode(allFocusSessions.map((s) => s.toJson()).toList()));
       await prefs.setString('user_name', userName);
       await prefs.setString('user_avatar', userAvatar);
       if (notificationTime != null) {
@@ -582,9 +613,9 @@ class TaskStore extends ChangeNotifier {
       notifyListeners();
     }
 
-    // Birleşmiş sonucu buluta geri yansıt ki iki taraf da yakınsasın.
     unawaited(FirestoreSyncService.pushTasks(List.of(allTasks)));
     unawaited(FirestoreSyncService.pushMoods(List.of(allMoods)));
+    unawaited(FirestoreSyncService.pushFocusSessions(List.of(allFocusSessions)));
   }
 
   Map<String, dynamic> _settingsJson() => {

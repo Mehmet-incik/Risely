@@ -56,9 +56,9 @@ class StatsScreen extends StatelessWidget {
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              child: const HeatmapCalendar(),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 20),
+              child: HeatmapCalendar(),
             ),
             if (taskStore.getProductiveMoodEmoji() != null)
               Padding(
@@ -78,6 +78,36 @@ class StatsScreen extends StatelessWidget {
                 ),
               ),
             Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.border)),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: AppColors.community.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(14)),
+                      child: const Icon(Icons.timer_rounded, color: AppColors.community, size: 28),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Bu Hafta Odaklanma', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${taskStore.weeklyFocusMinutes} dk (${taskStore.weeklyFocusSessionCount} seans)',
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.text),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
@@ -90,7 +120,7 @@ class StatsScreen extends StatelessWidget {
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(color: AppColors.xp.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+                            decoration: BoxDecoration(color: AppColors.xp.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
                             child: const Icon(Icons.done_all_rounded, color: AppColors.xp, size: 24),
                           ),
                           const SizedBox(height: 16),
@@ -110,7 +140,7 @@ class StatsScreen extends StatelessWidget {
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+                            decoration: BoxDecoration(color: Colors.blueAccent.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
                             child: const Icon(Icons.format_list_bulleted_rounded, color: Colors.blueAccent, size: 24),
                           ),
                           const SizedBox(height: 16),
@@ -137,7 +167,7 @@ class StatsScreen extends StatelessWidget {
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(color: AppColors.work.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+                            decoration: BoxDecoration(color: AppColors.work.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
                             child: const Icon(Icons.local_fire_department_rounded, color: AppColors.work, size: 24),
                           ),
                           const SizedBox(height: 16),
@@ -157,7 +187,7 @@ class StatsScreen extends StatelessWidget {
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(color: Colors.amber.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+                            decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
                             child: const Icon(Icons.emoji_events_rounded, color: Colors.amber, size: 24),
                           ),
                           const SizedBox(height: 16),
